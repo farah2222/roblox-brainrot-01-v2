@@ -38,7 +38,8 @@ local function lockBase(player)
 	state.LockUntil = now + RumbleConfig.LockSeconds
 	local gate = context.World.Gates[state.PlotIndex]
 	if gate then
-		gate.Visible = true
+		gate.Transparency = 0.35
+		gate.CanCollide = true
 	end
 	context.Remotes.Toast:FireClient(player, "Base locked for " .. RumbleConfig.LockSeconds .. "s!")
 	pushSnapshot(player)
@@ -106,7 +107,8 @@ function EconomyService.Start(ctx)
 					state.LockUntil = 0
 					local gate = context.World.Gates[state.PlotIndex]
 					if gate then
-						gate.Visible = false
+						gate.Transparency = 1
+						gate.CanCollide = false
 					end
 				end
 				pushSnapshot(player)

@@ -9,12 +9,12 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local WorldBuilder = require(script.Parent.WorldBuilder)
-local ConveyorService = require(script.Parent.ConveyorService)
-local EconomyService = require(script.Parent.EconomyService)
-local CombatService = require(script.Parent.CombatService)
-local ThreatService = require(script.Parent.ThreatService)
-local SpinService = require(script.Parent.SpinService)
+local WorldBuilder = require(script.WorldBuilder)
+local ConveyorService = require(script.ConveyorService)
+local EconomyService = require(script.EconomyService)
+local CombatService = require(script.CombatService)
+local ThreatService = require(script.ThreatService)
+local SpinService = require(script.SpinService)
 local GameState = require(ReplicatedStorage.Shared.GameState)
 
 -- The arena, built once.

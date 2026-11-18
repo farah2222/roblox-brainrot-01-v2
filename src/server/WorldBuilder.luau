@@ -93,7 +93,7 @@ function WorldBuilder.Build()
 		pens[i] = penList
 		-- The lock gate: a red energy wall across the open side, hidden until locked.
 		local gate = part(world, "LockGate" .. i, "Part", Vector3.new(26, 4, 0.8), Vector3.new(center.X, 2.5, center.Z + 10), Color3.fromRGB(220, 40, 40), { Transparency = 0.35, Material = Enum.Material.Neon, CanCollide = false })
-		gate.Visible = false
+		gate.Transparency = 1
 		gates[i] = gate
 		plots[i] = { Center = center, Color = plot.Color }
 	end

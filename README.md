@@ -60,7 +60,7 @@ Every brainrot shows its name, rarity and $/s on a floating label. Mutations —
 - `src/client/Game.client.luau` — keys, effects, popups, camera shake, confetti
 - `src/client/Hud.client.luau` — the whole ScreenGui and its live updates
 
-**Build it:** `rojo build default.project.json --output game.rbxl` (Rojo 7.7.1), then `mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts` to hand it in. Luau verified with the Luau CLI 0.747 (`luau-analyze` passes on all 14 scripts).
+**Build it:** `rojo build default.project.json --output game.rbxl` (Rojo 7.7.1), then `mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts` to hand it in. Luau verified with the Luau CLI 0.747 (`luau-compile` passes on all 13 scripts).
 
 **Play it:** open `game.rbxl` in Roblox Studio and press Play. Publish from Studio to get the play link in `PLAY.json` (the owner publishes it — see below).
 

@@ -82,6 +82,7 @@ waveLabel.Visible = false
 -- Thief alert, top-right.
 local alertLabel = text(gui, "ThiefAlert", UDim2.new(0, 368, 0, 28), UDim2.new(1, -380, 0, 12), 18, Color3.fromRGB(255, 90, 90))
 alertLabel.TextXAlignment = Enum.TextXAlignment.Right
+alertLabel.Visible = false
 
 -- Toasts, centre, stacked under the wave timer.
 local toastLabel = text(gui, "Toast", UDim2.new(0, 560, 0, 28), UDim2.new(0.5, -280, 0, 130), 20, Color3.fromRGB(255, 255, 255))
@@ -117,7 +118,7 @@ freezeBtn.MouseButton1Click:Connect(function() remotes.UseWeapon:FireServer("Fre
 pullBtn.MouseButton1Click:Connect(function() remotes.UseWeapon:FireServer("Pull") end)
 
 -- Shop panel, bottom-right.
-local shop = panel(gui, "Shop", UDim2.new(0, 250, 0, 320), UDim2.new(1, -266, 1, -336), Color3.fromRGB(25, 25, 40))
+local shop = panel(gui, "Shop", UDim2.new(0, 250, 0, 344), UDim2.new(1, -266, 1, -360), Color3.fromRGB(25, 25, 40))
 local shopTitle = text(shop, "Title", UDim2.new(1, 0, 0, 26), UDim2.new(0, 0, 0, 6), 20, Color3.fromRGB(255, 255, 255))
 shopTitle.TextXAlignment = Enum.TextXAlignment.Center
 shopTitle.Text = "SHOP"
@@ -127,7 +128,7 @@ local bootsBtn = button(shop, "Boots", UDim2.new(1, -20, 0, 40), UDim2.new(0, 10
 local magnetBtn = button(shop, "Magnet", UDim2.new(1, -20, 0, 40), UDim2.new(0, 10, 0, 182), Color3.fromRGB(90, 200, 120), "Money Magnet (" .. MoneyFormat.Cash(RumbleConfig.Upgrades.Magnet.Price) .. ")", 16)
 local gloveBtn = button(shop, "Glove", UDim2.new(1, -20, 0, 40), UDim2.new(0, 10, 0, 230), Color3.fromRGB(255, 180, 40), "Golden Glove (" .. MoneyFormat.Cash(RumbleConfig.Upgrades.Glove.Price) .. ")", 16)
 local spinBtn = button(shop, "Spin", UDim2.new(1, -20, 0, 40), UDim2.new(0, 10, 0, 278), Color3.fromRGB(255, 120, 200), "SPIN THE WHEEL [Q]", 16)
-local lockStatus = text(shop, "LockStatus", UDim2.new(1, -20, 0, 20), UDim2.new(0, 10, 0, 296), 15, Color3.fromRGB(255, 120, 120))
+local lockStatus = text(shop, "LockStatus", UDim2.new(1, -20, 0, 20), UDim2.new(0, 10, 0, 322), 15, Color3.fromRGB(255, 120, 120))
 lockStatus.Text = "Base: UNLOCKED"
 lockBtn.MouseButton1Click:Connect(function() remotes.LockBase:FireServer() end)
 rebirthBtn.MouseButton1Click:Connect(function() remotes.Rebirth:FireServer() end)
@@ -193,8 +194,10 @@ end)
 
 remotes.ThiefComing.OnClientEvent:Connect(function(victimName)
 	alertLabel.Text = "Si Cilok Nakal is near " .. victimName .. "'s base!"
+	alertLabel.Visible = true
 	task.delay(8, function()
 		alertLabel.Text = ""
+		alertLabel.Visible = false
 	end)
 end)
 
