@@ -13,7 +13,7 @@ local SpinService = {}
 
 local context = nil
 
-local MUTATION_LADDER = { Normal = "Golden", Golden = "Rainbow", Rainbow = "Diamond", Diamond = "Diamond" }
+local MUTATION_LADDER = { Normal = "Golden", Golden = "Lava", Lava = "Rainbow", Rainbow = "Diamond", Diamond = "Glitch", Glitch = "Glitch" }
 
 -- Roll a prize. Returns a table describing it.
 local function rollPrize(state)
@@ -47,6 +47,7 @@ local function spin(player)
 		return
 	end
 	state.NextSpinAt = now + RumbleConfig.SpinEvery
+	state.MissionStats.Spins = state.MissionStats.Spins + 1
 	local prize = rollPrize(state)
 
 	if prize.Kind == "Cash" then

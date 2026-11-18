@@ -13,6 +13,8 @@ local ContextActionService = game:GetService("ContextActionService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+local RumbleConfig = require(ReplicatedStorage.Shared.RumbleConfig)
+
 local player = Players.LocalPlayer
 local remotes = ReplicatedStorage:WaitForChild("RumbleRemotes")
 local camera = workspace.CurrentCamera
@@ -65,6 +67,39 @@ local function nearestPenBrainrot(range)
 	return best
 end
 
+-- The nearest owned brainrot model on THIS player's own plot, within a
+-- range (for selling). The server re-checks ownership; this just keeps
+-- the key from firing on a rival's brainrot.
+local myPlotIndex = 0
+local function nearestOwnPenBrainrot(range)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not root or myPlotIndex < 1 then
+		return nil
+	end
+	local plot = RumbleConfig.Plots[myPlotIndex]
+	if not plot then
+		return nil
+	end
+	local folder = workspace:FindFirstChild("OwnedBrainrots")
+	if not folder then
+		return nil
+	end
+	local best = nil
+	local bestDist = range
+	for _, model in ipairs(folder:GetChildren()) do
+		if model:IsA("Model") then
+			local pos = model:GetPivot().Position
+			local dist = (pos - root.Position).Magnitude
+			local homeDist = (Vector3.new(pos.X, 0, pos.Z) - Vector3.new(plot.Center.X, 0, plot.Center.Z)).Magnitude
+			if dist < bestDist and homeDist < 16 then
+				bestDist = dist
+				best = model
+			end
+		end
+	end
+	return best
+end
+
 local function bindKey(name, key, fn)
 	ContextActionService:BindAction(name, function(_, state, _)
 		if state == Enum.UserInputState.Begin then
@@ -109,6 +144,13 @@ end)
 
 bindKey("RumbleSpin", Enum.KeyCode.Q, function()
 	remotes.SpinWheel:FireServer()
+end)
+
+bindKey("RumbleSell", Enum.KeyCode.V, function()
+	local model = nearestOwnPenBrainrot(9)
+	if model then
+		remotes.SellBrainrot:FireServer(model:GetPivot().Position)
+	end
 end)
 
 -- A burst of particles at a position: coloured sparks that rise and fade.
@@ -243,6 +285,9 @@ end)
 local lastIncome = 0
 remotes.HudUpdate.OnClientEvent:Connect(function(snapshot)
 	lastIncome = snapshot.Income or 0
+	if snapshot.PlotIndex then
+		myPlotIndex = snapshot.PlotIndex
+	end
 end)
 task.spawn(function()
 	while true do

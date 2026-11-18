@@ -18,8 +18,10 @@ local context = nil
 
 local MUTATION_TINTS = {
 	Golden = Color3.fromRGB(255, 215, 0),
+	Lava = Color3.fromRGB(255, 90, 30),
 	Rainbow = Color3.fromRGB(255, 120, 220),
 	Diamond = Color3.fromRGB(140, 230, 255),
+	Glitch = Color3.fromRGB(180, 60, 255),
 }
 
 local function colorFrom(def, which)
@@ -186,7 +188,11 @@ local function spawnOne()
 	end
 	local rarity = BrainrotCatalog.RollRarity()
 	local def = BrainrotCatalog.RandomOfRarity(rarity)
+	-- Golden Hour: roll the mutation several times, keep the best.
 	local mutation = BrainrotCatalog.RollMutation()
+	if context.Threat and context.Threat.IsGoldenHour() then
+		mutation = BrainrotCatalog.RollMutation(RumbleConfig.GoldenHourMutationRolls)
+	end
 	local boss = rarity == "Secret" and math.random() < RumbleConfig.BossChance
 	local price = def.Cost
 	if boss then
@@ -241,6 +247,7 @@ function ConveyorService.PlaceOnBase(defId, mutation, state, world)
 	if not slot then
 		return nil
 	end
+	GameState.MarkDiscovered(state, defId)
 	local model = ConveyorService.BuildModel(def, mutation, false)
 	local pos = WorldBuilder.PenPosition(state.PlotIndex, slot)
 	model:PivotTo(CFrame.new(pos.X, pos.Y + 2, pos.Z))
@@ -257,6 +264,71 @@ function ConveyorService.PlaceOnBase(defId, mutation, state, world)
 	end
 	attachLabel(model, def, mutation, 0, false)
 	return slot
+end
+
+-- The carry: when a player buys (or steals) a brainrot they CARRY it
+-- home in their hands instead of it teleporting. The model rides in
+-- front of them; when they reach their own plot with a free pen, it
+-- walks itself into the pen. A weapon hit makes them drop it.
+-- Carrying is heavy: you walk slower while loaded, but delivering pays
+-- a bonus by tier — the rarer the catch, the slower you run and the
+-- more the delivery pays.
+function ConveyorService.RefreshWalkSpeed(player, state)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+	local speed = GameState.WalkSpeed(state)
+	if state.Carrying then
+		speed = speed * RumbleConfig.CarrySlow
+	end
+	humanoid.WalkSpeed = speed
+end
+
+function ConveyorService.StartCarry(player, defId, mutation, state, fromVictim)
+	if state.Carrying then
+		return false
+	end
+	if not GameState.FreeSlot(state) then
+		return false
+	end
+	local def = BrainrotCatalog.Get(defId)
+	if not def then
+		return false
+	end
+	local model = ConveyorService.BuildModel(def, mutation, false)
+	model:SetAttribute("CarriedBy", player.Name)
+	attachLabel(model, def, mutation, 0, false)
+	model.Parent = workspace
+	state.Carrying = { DefId = defId, Mutation = mutation, Model = model, FromVictim = fromVictim }
+	ConveyorService.RefreshWalkSpeed(player, state)
+	return true
+end
+
+-- Drop the brainrot a player is carrying (a weapon hit did this).
+-- The brainrot is lost: it despawns with a puff.
+function ConveyorService.DropCarry(player, state)
+	local carrying = state.Carrying
+	if not carrying then
+		return nil
+	end
+	state.Carrying = nil
+	if carrying.Model and carrying.Model.Parent then
+		carrying.Model:Destroy()
+	end
+	local def = BrainrotCatalog.Get(carrying.DefId)
+	local name = def and def.Name or "a brainrot"
+	if context and context.Remotes then
+		context.Remotes.Toast:FireClient(player, "You dropped " .. name .. "!")
+	end
+	ConveyorService.RefreshWalkSpeed(player, state)
+	return carrying.DefId
+end
+
+-- Is this player carrying a brainrot right now?
+function ConveyorService.IsCarrying(state)
+	return state.Carrying ~= nil
 end
 
 -- Wash the belt: destroy every marching brainrot (the tsunami's doing).
@@ -318,16 +390,26 @@ local function buyBrainrot(player, uid)
 		context.Remotes.Toast:FireClient(player, "Not enough cash for " .. entry.Def.Name .. "!")
 		return
 	end
-	local slot = ConveyorService.PlaceOnBase(entry.Def.Id, entry.Mutation, state, context.World)
-	if not slot then
+	if state.Carrying then
+		GameState.AddCash(state, entry.Price)
+		context.Remotes.Toast:FireClient(player, "You are already carrying a brainrot! Take it home first.")
+		return
+	end
+	if not GameState.FreeSlot(state) then
 		GameState.AddCash(state, entry.Price)
 		context.Remotes.Toast:FireClient(player, "Your base is full! Rebirth to clear it.")
 		return
 	end
+	state.MissionStats.Buys = state.MissionStats.Buys + 1
+	if not ConveyorService.StartCarry(player, entry.Def.Id, entry.Mutation, state, nil) then
+		GameState.AddCash(state, entry.Price)
+		context.Remotes.Toast:FireClient(player, "Could not pick up " .. entry.Def.Name .. "!")
+		return
+	end
 	entry.Model:Destroy()
 	active[uid] = nil
-	context.Remotes.BrainrotBought:FireClient(player, entry.Def.Name, entry.Mutation, slot)
-	context.Remotes.Toast:FireClient(player, "Bought " .. entry.Def.Name .. " for " .. MoneyFormat.Cash(entry.Price) .. "!")
+	context.Remotes.BrainrotBought:FireClient(player, entry.Def.Name, entry.Mutation, 0)
+	context.Remotes.Toast:FireClient(player, "Bought " .. entry.Def.Name .. " for " .. MoneyFormat.Cash(entry.Price) .. "! Carry it home to your base!")
 end
 
 function ConveyorService.Start(ctx)
@@ -345,6 +427,47 @@ function ConveyorService.Start(ctx)
 				active[uid] = nil
 			else
 				entry.Model:PivotTo(CFrame.new(nextX, pivot.Position.Y, pivot.Position.Z))
+			end
+		end
+		-- The carry: each carried brainrot rides in front of its player,
+		-- and walks itself into a free pen when the player reaches home.
+		for player, playerState in pairs(context.States) do
+			local carrying = playerState.Carrying
+			if carrying and carrying.Model and carrying.Model.Parent then
+				local character = player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				if root then
+					local look = root.CFrame.LookVector
+					local bob = math.sin(os.clock() * 6) * 0.4
+					local pos = root.Position + Vector3.new(look.X, 0, look.Z).Unit * 3.4 + Vector3.new(0, 2.5 + bob, 0)
+					-- The model's face is +X; turn it to face where the player faces.
+					local yaw = math.atan2(-look.Z, look.X)
+					carrying.Model:PivotTo(CFrame.new(pos) * CFrame.Angles(0, yaw, 0))
+					-- Home? A free pen on this player's plot takes it.
+					local plot = RumbleConfig.Plots[playerState.PlotIndex]
+					if plot then
+						local dx = root.Position.X - plot.Center.X
+						local dz = root.Position.Z - plot.Center.Z
+						if dx * dx + dz * dz < 14 * 14 and GameState.FreeSlot(playerState) then
+							local defId = carrying.DefId
+							local mutation = carrying.Mutation
+							carrying.Model:Destroy()
+							playerState.Carrying = nil
+							ConveyorService.RefreshWalkSpeed(player, playerState)
+							local slot = ConveyorService.PlaceOnBase(defId, mutation, playerState, context.World)
+							if slot then
+								local def = BrainrotCatalog.Get(defId)
+								local bonus = def and (RumbleConfig.DeliveryBonus[def.Rarity] or 0) or 0
+								local message = "Delivered " .. (def and def.Name or "a brainrot") .. " to your base!"
+								if bonus > 0 then
+									GameState.AddCash(playerState, bonus)
+									message = message .. " Delivery bonus +" .. MoneyFormat.Cash(bonus) .. "!"
+								end
+								context.Remotes.Toast:FireClient(player, message)
+							end
+						end
+					end
+				end
 			end
 		end
 	end)

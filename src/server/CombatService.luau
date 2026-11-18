@@ -52,6 +52,26 @@ function CombatService.Interrupt(player)
 	cancelChannel(player, "Your steal was interrupted!")
 end
 
+-- A weapon swing near Si Cilok Nakal bonks him away (and counts for the
+-- "Thief Buster" mission). Returns true when a bonk landed.
+local function tryBonkThief(player, position, range)
+	if context.Threat and context.Threat.TryBonkThief then
+		return context.Threat.TryBonkThief(player, position, range)
+	end
+	return false
+end
+
+-- A weapon hit on a carrier makes them drop what they are carrying.
+local function dropCarried(player)
+	local state = context.States[player]
+	if not state then
+		return
+	end
+	if context.Conveyor and context.Conveyor.IsCarrying(state) then
+		context.Conveyor.DropCarry(player, state)
+	end
+end
+
 -- Shove a player's character along a direction.
 local function shove(player, direction, power)
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -84,12 +104,14 @@ local function swingSlap(player)
 	end
 	local rival = nearestRival(player, weapon.Reach)
 	if not rival then
-		context.Remotes.WeaponSwung:FireClient(player, "Slap", false)
+		local bonked = tryBonkThief(player, root.Position, weapon.Reach)
+		context.Remotes.WeaponSwung:FireClient(player, "Slap", bonked)
 		return
 	end
 	local direction = (rival.Character.HumanoidRootPart.Position - root.Position).Unit
 	shove(rival, direction, weapon.Shove)
 	CombatService.Interrupt(rival)
+	dropCarried(rival)
 	context.Remotes.WeaponSwung:FireClient(player, "Slap", true)
 	context.Remotes.WeaponHit:FireClient(rival, "Slap")
 	context.Remotes.Toast:FireClient(rival, player.Name .. " slapped you away!")
@@ -112,9 +134,14 @@ local function fireFreeze(player)
 		return
 	end
 	used.Freeze = now
+	local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not myRoot then
+		return
+	end
 	local rival = nearestRival(player, weapon.Reach)
 	if not rival then
-		context.Remotes.WeaponSwung:FireClient(player, "Freeze", false)
+		local bonked = tryBonkThief(player, myRoot.Position, weapon.Reach)
+		context.Remotes.WeaponSwung:FireClient(player, "Freeze", bonked)
 		return
 	end
 	local humanoid = rival.Character and rival.Character:FindFirstChildOfClass("Humanoid")
@@ -123,6 +150,7 @@ local function fireFreeze(player)
 		return
 	end
 	CombatService.Interrupt(rival)
+	dropCarried(rival)
 	humanoid.WalkSpeed = 0
 	humanoid.JumpPower = 0
 	local ice = Instance.new("Part")
@@ -179,7 +207,8 @@ local function pullBrainrot(player)
 		context.Remotes.WeaponSwung:FireClient(player, "Pull", true)
 		context.Remotes.Toast:FireClient(player, "Magnet pulled " .. entry.Def.Name .. " to you!")
 	else
-		context.Remotes.WeaponSwung:FireClient(player, "Pull", false)
+		local bonked = tryBonkThief(player, root.Position, weapon.Reach)
+		context.Remotes.WeaponSwung:FireClient(player, "Pull", bonked)
 	end
 end
 
@@ -193,6 +222,10 @@ local function startSteal(thief, penPos)
 		return
 	end
 	if channels[thief] then
+		return
+	end
+	if context.Conveyor and context.Conveyor.IsCarrying(thiefState) then
+		context.Remotes.Toast:FireClient(thief, "You are already carrying a brainrot! Take it home first.")
 		return
 	end
 	local victim = nil
@@ -276,10 +309,14 @@ local function watchChannels()
 					local stolen = GameState.RemoveBrainrot(victimState, channel.Slot)
 					if stolen then
 						context.Conveyor.ClearPen(victimState, channel.Slot)
-						local slot = context.Conveyor.PlaceOnBase(stolen.DefId, stolen.Mutation, thiefState, context.World)
-						if slot then
+						-- The thief carries it home (and can be bonked on the way).
+						if context.Conveyor.IsCarrying(thiefState) or not GameState.FreeSlot(thiefState) then
+							GameState.AddBrainrot(victimState, stolen.DefId, stolen.Mutation)
+							context.Conveyor.PlaceOnBase(stolen.DefId, stolen.Mutation, victimState, context.World)
+							context.Remotes.Toast:FireClient(thief, "Your hands are full — the brainrot stays put!")
+						elseif context.Conveyor.StartCarry(thief, stolen.DefId, stolen.Mutation, thiefState, channel.Victim) then
 							context.Remotes.StealDone:FireClient(thief, stolen.DefId)
-							context.Remotes.Toast:FireClient(thief, "You stole a brainrot!")
+							context.Remotes.Toast:FireClient(thief, "You stole a brainrot! Carry it home — fast!")
 							context.Remotes.Toast:FireClient(channel.Victim, thief.Name .. " stole your brainrot!")
 						else
 							GameState.AddBrainrot(victimState, stolen.DefId, stolen.Mutation)

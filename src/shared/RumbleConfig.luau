@@ -20,9 +20,11 @@ RumbleConfig.BeltCapacity = 8 -- brainrots on the belt at once
 -- Where players arrive.
 RumbleConfig.SpawnPad = Vector3.new(-72, 1, 0)
 
--- A player's home plot: 8 pens in a 2 by 4 grid.
+-- A player's home plot: 8 pens in a 2 by 5 grid (10 pen markers exist;
+-- Base Expansion unlocks pens 9 and 10). MaxPens is the hard cap.
 RumbleConfig.PensPerBase = 8
-RumbleConfig.PenGap = 6
+RumbleConfig.MaxPens = 10
+RumbleConfig.PenGap = 5
 RumbleConfig.PenSize = Vector3.new(4.5, 0.2, 4.5)
 
 -- Base plots around the belt (centre, colour). Four plots, one per player.
@@ -61,11 +63,46 @@ RumbleConfig.RebirthPriceGrowth = 4 -- price multiplies by this each rebirth
 RumbleConfig.RebirthBoost = 0.30 -- +30% $/s per rebirth
 
 -- Shop upgrades. Each has a price, a cap, and what one level does.
+-- Four levelled tracks: every level costs Price * (level + 1).
+-- Expansion adds one pen per level (base is 8 pens, max 10).
 RumbleConfig.Upgrades = {
-	Boots = { Price = 1000, Max = 3, WalkBonus = 0.30, Label = "Speed Boots" },
+	Boots = { Price = 1000, Max = 5, WalkBonus = 0.30, Label = "Speed Boots" },
 	Magnet = { Price = 2500, Max = 5, IncomeBonus = 0.12, Label = "Money Magnet" },
-	Glove = { Price = 5000, Max = 3, CooldownCut = 0.20, Label = "Golden Glove" },
+	Glove = { Price = 5000, Max = 5, CooldownCut = 0.20, Label = "Golden Glove" },
+	Expansion = { Price = 8000, Max = 2, Pens = 1, Label = "Base Expansion" },
 }
+
+-- Golden Hour: a positive event on a timer. Income x2 and mutation
+-- rolls get 4 tries (the best one wins) while it lasts.
+RumbleConfig.GoldenHourEvery = 240 -- seconds between Golden Hours
+RumbleConfig.GoldenHourDuration = 60 -- seconds each one lasts
+RumbleConfig.GoldenHourIncome = 2 -- income multiplier during it
+RumbleConfig.GoldenHourMutationRolls = 4 -- mutation re-rolls during it
+
+-- The carry: a bought brainrot rides in your hands, not in your pocket.
+-- Carrying is heavy (walk slower) but delivering pays a bonus by tier —
+-- the rarer the catch, the slower you run and the more the delivery pays.
+RumbleConfig.CarrySlow = 0.8 -- walk-speed scale while carrying
+RumbleConfig.DeliveryBonus = {
+	Common = 0,
+	Rare = 50,
+	Epic = 200,
+	Legendary = 500,
+	Mythic = 1000,
+	Secret = 2500,
+	Divine = 5000,
+}
+
+-- The mission chain: finish all 10 missions for the chain bonus.
+RumbleConfig.ChainBonusCash = 25000
+RumbleConfig.ChainBonusIncome = 0.25 -- permanent +25% $/s once the chain is done
+
+-- The Index collection: finish a whole tier for a bonus, all 40 for a fortune.
+RumbleConfig.TierCollectionBonus = 3000
+RumbleConfig.FullCollectionBonus = 50000
+
+-- Selling: a brainrot sells for 70% of what it cost to buy.
+RumbleConfig.SellFraction = 0.7
 
 -- Weapons. Keys 1, 2, 3. Cooldowns in seconds, ranges in studs.
 RumbleConfig.Weapons = {

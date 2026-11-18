@@ -16,6 +16,40 @@ local ThreatService = {}
 
 local context = nil
 
+-- The thief currently in the arena (nil when none). Weapons bonk him
+-- through TryBonkThief; touching him does the same.
+local currentThief = nil -- { Model, Shooed, Victim }
+
+-- Golden Hour: the noodle gods smile. While it lasts, income is x2 and
+-- mutation rolls get extra tries. The server marks every player.
+local goldenHourUntil = 0
+
+function ThreatService.IsGoldenHour()
+	return os.time() < goldenHourUntil
+end
+
+-- Bonk Si Cilok Nakal away with a weapon. Returns true when the bonk
+-- landed (he is close enough to the swing). Counts for the mission.
+function ThreatService.TryBonkThief(player, position, range)
+	if not currentThief or not currentThief.Model or not currentThief.Model.Parent then
+		return false
+	end
+	if currentThief.Shooed then
+		return false
+	end
+	local pivot = currentThief.Model:GetPivot().Position
+	if (pivot - position).Magnitude > range then
+		return false
+	end
+	currentThief.Shooed = true
+	local state = context.States[player]
+	if state then
+		state.MissionStats.Bonks = state.MissionStats.Bonks + 1
+	end
+	context.Remotes.ToastAll:FireAllClients(player.Name .. " BONKED Si Cilok Nakal away!")
+	return true
+end
+
 -- Build Si Cilok Nakal: a red-hatted vendor with a very suspicious grin.
 local function buildThief()
 	local model = Instance.new("Model")
@@ -84,22 +118,28 @@ local function thiefVisit()
 	local thief = buildThief()
 	thief:PivotTo(CFrame.new(-100, 3, 40))
 	thief.Parent = workspace
-	context.Remotes.ToastAll:FireAllClients("Si Cilok Nakal is sneaking toward " .. victim.Name .. "'s base! Touch him to shoo him!")
+	currentThief = { Model = thief, Shooed = false, Victim = victim }
+	context.Remotes.ToastAll:FireAllClients("Si Cilok Nakal is sneaking toward " .. victim.Name .. "'s base! Touch him to shoo him — or bonk him with a weapon!")
 	context.Remotes.ThiefComing:FireAllClients(victim.Name)
 
 	local plotCenter = RumbleConfig.Plots[victimState.PlotIndex].Center
-	local shooed = false
+	-- Touching him shooes him (and counts as a bonk for the mission).
 	local touched = thief.PrimaryPart.Touched:Connect(function(hit)
 		local hitter = game:GetService("Players"):GetPlayerFromCharacter(hit.Parent)
-		if hitter then
-			shooed = true
+		if hitter and currentThief and not currentThief.Shooed then
+			currentThief.Shooed = true
+			local hitterState = context.States[hitter]
+			if hitterState then
+				hitterState.MissionStats.Bonks = hitterState.MissionStats.Bonks + 1
+			end
+			context.Remotes.ToastAll:FireAllClients(hitter.Name .. " shooed Si Cilok Nakal away!")
 		end
 	end)
 
 	-- Walk to the base, one step at a time, checking for a shoo.
 	local target = Vector3.new(plotCenter.X, 3, plotCenter.Z + 12)
 	local steps = 0
-	while steps < 400 and not shooed do
+	while steps < 400 and currentThief and not currentThief.Shooed do
 		steps = steps + 1
 		local pivot = thief:GetPivot().Position
 		local delta = target - pivot
@@ -112,33 +152,42 @@ local function thiefVisit()
 		task.wait(0.1)
 	end
 	touched:Disconnect()
-	if shooed then
+	if not currentThief then
+		thief:Destroy()
+		return
+	end
+	if currentThief.Shooed then
 		context.Remotes.ToastAll:FireAllClients("Someone shooed Si Cilok Nakal away!")
+		currentThief = nil
 		thief:Destroy()
 		return
 	end
 	if GameState.IsLocked(victimState, os.time()) then
 		context.Remotes.ToastAll:FireAllClients("Si Cilok Nakal found the base locked and left!")
+		currentThief = nil
 		thief:Destroy()
 		return
 	end
-	-- The channel: 7 seconds, interrupted if anyone touches him now.
-	local channelDone = false
+	-- The channel: 7 seconds, interrupted if anyone touches or bonks him.
 	local channelTouch = thief.PrimaryPart.Touched:Connect(function(hit)
 		local hitter = game:GetService("Players"):GetPlayerFromCharacter(hit.Parent)
-		if hitter then
-			shooed = true
+		if hitter and currentThief and not currentThief.Shooed then
+			currentThief.Shooed = true
+			local hitterState = context.States[hitter]
+			if hitterState then
+				hitterState.MissionStats.Bonks = hitterState.MissionStats.Bonks + 1
+			end
 		end
 	end)
 	local waited = 0
-	while waited < RumbleConfig.ThiefChannel and not shooed do
+	while waited < RumbleConfig.ThiefChannel and currentThief and not currentThief.Shooed do
 		task.wait(0.25)
 		waited = waited + 0.25
 	end
 	channelTouch:Disconnect()
-	channelDone = not shooed
-	if not channelDone then
+	if not currentThief or currentThief.Shooed then
 		context.Remotes.ToastAll:FireAllClients("Someone shooed Si Cilok Nakal mid-steal!")
+		currentThief = nil
 		thief:Destroy()
 		return
 	end
@@ -150,23 +199,62 @@ local function thiefVisit()
 		local name = def and def.Name or "a brainrot"
 		context.Remotes.ToastAll:FireAllClients("Si Cilok Nakal stole " .. name .. " from " .. victim.Name .. "!")
 	end
+	currentThief = nil
 	thief:Destroy()
 end
 
--- The tsunami: warn, then sweep a noodle wall down the belt.
+-- The tsunami: warn, then sweep a giant curling noodle wall down the
+-- belt. Bigger than before, with a foamy crest and a second wall behind
+-- it — and a clear RUN HOME banner on every screen.
 local function tsunami()
 	context.Remotes.TsunamiWarning:FireAllClients(RumbleConfig.TsunamiWarning)
 	task.wait(RumbleConfig.TsunamiWarning)
+	-- Everyone in the arena when the wave comes survives it (mission).
+	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+		local state = context.States[player]
+		if state then
+			state.MissionStats.TsunamisSurvived = state.MissionStats.TsunamisSurvived + 1
+		end
+	end
+	-- The wave is a Model so the whole wall, crest and noodles sweep together.
+	local waveModel = Instance.new("Model")
+	waveModel.Name = "TsunamiWall"
 	local wave = Instance.new("Part")
-	wave.Name = "TsunamiWall"
-	wave.Size = Vector3.new(8, 22, 150)
+	wave.Name = "Wall"
+	wave.Size = Vector3.new(10, 30, 150)
 	wave.Color = Color3.fromRGB(250, 210, 90)
 	wave.Material = Enum.Material.SmoothPlastic
-	wave.Transparency = 0.2
+	wave.Transparency = 0.15
 	wave.Anchored = true
 	wave.CanCollide = false
-	wave.Position = Vector3.new(-70, 11, 0)
-	wave.Parent = workspace
+	wave.Position = Vector3.new(-70, 15, 0)
+	wave.Parent = waveModel
+	waveModel.PrimaryPart = wave
+	-- A foamy crest curling over the top of the wall.
+	for _, z in ipairs({ -60, -45, -30, -15, 0, 15, 30, 45, 60 }) do
+		local foam = Instance.new("Part")
+		foam.Name = "WaveCrest"
+		foam.Shape = Enum.PartType.Ball
+		foam.Size = Vector3.new(8, 8, 8)
+		foam.Color = Color3.fromRGB(255, 240, 180)
+		foam.Material = Enum.Material.SmoothPlastic
+		foam.Transparency = 0.1
+		foam.Anchored = true
+		foam.CanCollide = false
+		foam.Position = Vector3.new(-70, 30, z)
+		foam.Parent = waveModel
+	end
+	-- A second, shorter wall trailing behind for depth.
+	local backWall = Instance.new("Part")
+	backWall.Name = "TsunamiBackWall"
+	backWall.Size = Vector3.new(6, 18, 150)
+	backWall.Color = Color3.fromRGB(240, 180, 60)
+	backWall.Material = Enum.Material.SmoothPlastic
+	backWall.Transparency = 0.35
+	backWall.Anchored = true
+	backWall.CanCollide = false
+	backWall.Position = Vector3.new(-76, 9, 0)
+	backWall.Parent = waveModel
 	for _, n in ipairs({ -60, -40, -20, 0, 20, 40, 60 }) do
 		local noodle = Instance.new("Part")
 		noodle.Name = "NoodleChunk"
@@ -174,15 +262,16 @@ local function tsunami()
 		noodle.Color = Color3.fromRGB(240, 190, 60)
 		noodle.Anchored = true
 		noodle.CanCollide = false
-		noodle.Position = Vector3.new(-70, 23, n)
-		noodle.Parent = wave
+		noodle.Position = Vector3.new(-70, 31, n)
+		noodle.Parent = waveModel
 	end
+	waveModel.Parent = workspace
 	context.Remotes.TsunamiHit:FireAllClients()
 	-- Sweep east, washing the belt clean and shoving players.
 	local x = -70
 	while x < 70 do
 		x = x + 2
-		wave.Position = Vector3.new(x, 11, 0)
+		waveModel:PivotTo(CFrame.new(x, 15, 0))
 		for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
 			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 			if root and math.abs(root.Position.X - x) < 6 then
@@ -191,9 +280,25 @@ local function tsunami()
 		end
 		task.wait(0.05)
 	end
-	wave:Destroy()
+	waveModel:Destroy()
 	context.Conveyor.WashBelt()
 	context.Remotes.ToastAll:FireAllClients("The tsunami swept the belt clean!")
+end
+
+-- Golden Noodle Hour: the noodle gods smile on the arena. Income x2 and
+-- rare mutations rain for a minute. Themed to our world — golden noodles,
+-- not a generic timer.
+local function goldenHour()
+	local now = os.time()
+	goldenHourUntil = now + RumbleConfig.GoldenHourDuration
+	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+		local state = context.States[player]
+		if state then
+			state.GoldenHourUntil = goldenHourUntil
+		end
+	end
+	context.Remotes.GoldenHour:FireAllClients(RumbleConfig.GoldenHourDuration)
+	context.Remotes.ToastAll:FireAllClients("GOLDEN NOODLE HOUR! The noodle gods smile — income x2, rare mutations rain for 60s!")
 end
 
 -- The meteor shower: flaming noodles rain down and leave cash pickups.
@@ -273,6 +378,15 @@ function ThreatService.Start(ctx)
 		while true do
 			task.wait(RumbleConfig.MeteorEvery)
 			meteorShower()
+		end
+	end)
+	-- Golden Noodle Hour: the first one comes quickly so players see it,
+	-- then on its regular timer.
+	task.spawn(function()
+		task.wait(45)
+		while true do
+			goldenHour()
+			task.wait(RumbleConfig.GoldenHourEvery)
 		end
 	end)
 end

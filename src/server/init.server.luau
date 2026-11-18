@@ -26,10 +26,10 @@ remotesFolder.Name = "RumbleRemotes"
 remotesFolder.Parent = ReplicatedStorage
 local remoteNames = {
 	"BuyBrainrot", "LockBase", "BuyUpgrade", "Rebirth", "UseWeapon",
-	"StealStart", "SpinWheel", "HudUpdate", "Toast", "ToastAll",
+	"StealStart", "SpinWheel", "SellBrainrot", "HudUpdate", "Toast", "ToastAll",
 	"BrainrotBought", "RebirthDone", "WeaponSwung", "WeaponHit",
 	"StealStarted", "StealStopped", "StealDone", "SpinResult",
-	"ThiefComing", "TsunamiWarning", "TsunamiHit",
+	"ThiefComing", "TsunamiWarning", "TsunamiHit", "GoldenHour", "MissionDone",
 }
 local remotes = {}
 for _, name in ipairs(remoteNames) do
@@ -63,8 +63,14 @@ end
 
 local function onPlayerRemoving(player)
 	local state = states[player]
-	if state and state.PlotIndex >= 1 and state.PlotIndex <= 4 then
-		table.insert(freePlots, state.PlotIndex)
+	if state then
+		-- A leaver drops what they were carrying.
+		if state.Carrying then
+			ConveyorService.DropCarry(player, state)
+		end
+		if state.PlotIndex >= 1 and state.PlotIndex <= 4 then
+			table.insert(freePlots, state.PlotIndex)
+		end
 	end
 	states[player] = nil
 end
@@ -82,6 +88,7 @@ local context = {
 	World = world,
 	Conveyor = ConveyorService,
 	Combat = CombatService,
+	Threat = ThreatService,
 }
 
 ConveyorService.Start(context)

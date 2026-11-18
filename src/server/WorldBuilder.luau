@@ -27,13 +27,13 @@ local function part(parent, name, className, size, position, color, extra)
 	return inst
 end
 
--- Pen positions on a plot: 8 pens in a 2 by 4 grid.
+-- Pen positions on a plot: 10 pens in a 2 by 5 grid.
 function WorldBuilder.PenPosition(plotIndex, slot)
 	local plot = RumbleConfig.Plots[plotIndex]
-	local col = (slot - 1) % 4
-	local row = math.floor((slot - 1) / 4)
+	local col = (slot - 1) % 5
+	local row = math.floor((slot - 1) / 5)
 	return Vector3.new(
-		plot.Center.X + (col - 1.5) * RumbleConfig.PenGap,
+		plot.Center.X + (col - 2) * RumbleConfig.PenGap,
 		plot.Center.Y + 1,
 		plot.Center.Z + (row - 0.5) * 7
 	)
@@ -85,7 +85,7 @@ function WorldBuilder.Build()
 		part(world, "FenceE" .. i, "Part", Vector3.new(0.6, 2.5, 20), Vector3.new(center.X + 13, 1.8, center.Z), Color3.fromRGB(240, 240, 240))
 		part(world, "FenceN" .. i, "Part", Vector3.new(26, 2.5, 0.6), Vector3.new(center.X, 1.8, center.Z - 10), Color3.fromRGB(240, 240, 240))
 		local penList = {}
-		for slot = 1, RumbleConfig.PensPerBase do
+		for slot = 1, RumbleConfig.MaxPens do
 			local pos = WorldBuilder.PenPosition(i, slot)
 			local marker = part(world, "PenMarker", "Part", RumbleConfig.PenSize, pos, Color3.fromRGB(255, 255, 255), { Transparency = 0.55, Material = Enum.Material.Neon })
 			table.insert(penList, marker)
