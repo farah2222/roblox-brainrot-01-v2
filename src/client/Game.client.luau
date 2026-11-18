@@ -1,275 +1,257 @@
--- Brainrot Bay: the client. It draws the HUD (cash, $/s, rebirths,
--- lock status, wave timer, shop and rebirth buttons), shows toast
--- popups, and plays the effects: particles on a buy, cash popups over
--- the base, screen shake when the wave hits, confetti on a rebirth.
--- The client never owns state -- every number on screen comes from
--- the server's CashUpdate snapshots over RemoteEvents.
+-- Brainrot Rumble: the client for input and effects. Keys: E buys the
+-- nearest brainrot on the belt, F steals from a base you stand next to,
+-- 1/2/3 fire the slap glove, freeze ray and brainrot magnet, L locks
+-- your base, R rebirths, Q spins the wheel. This script never moves
+-- money or brainrots itself: every key press is one RemoteEvent, and the
+-- server decides whether it worked. Effects here are purely visual:
+-- particle bursts on a buy, confetti on a rebirth, camera shake on a
+-- wave or a hit, and floating cash popups over your base.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ContextActionService = game:GetService("ContextActionService")
 local RunService = game:GetService("RunService")
-
-local BrainrotDefs = require(ReplicatedStorage.Shared.BrainrotDefs)
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+local remotes = ReplicatedStorage:WaitForChild("RumbleRemotes")
+local camera = workspace.CurrentCamera
 
-local remotes = ReplicatedStorage:WaitForChild("BrainrotBayRemotes")
-local CashUpdate = remotes:WaitForChild("CashUpdate")
-local BoughtBrainrot = remotes:WaitForChild("BoughtBrainrot")
-local WaveWarning = remotes:WaitForChild("WaveWarning")
-local WaveHit = remotes:WaitForChild("WaveHit")
-local ThiefAlert = remotes:WaitForChild("ThiefAlert")
-local LockUpdate = remotes:WaitForChild("LockUpdate")
-local RebirthDone = remotes:WaitForChild("RebirthDone")
-local Popup = remotes:WaitForChild("Popup")
-local BuyLock = remotes:WaitForChild("BuyLock")
-local Rebirth = remotes:WaitForChild("Rebirth")
-local BuyUpgrade = remotes:WaitForChild("BuyUpgrade")
-
--- The whole HUD, one ScreenGui. Roblox's own menu buttons sit over
--- the top-left corner, so the money bar lives top-centre instead.
-local gui = Instance.new("ScreenGui")
-gui.Name = "BrainrotBayGui"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-gui.Parent = playerGui
-
-local function makeLabel(parent: Instance, name: string, pos: UDim2, size: UDim2, text: string, textSize: number, color: Color3): TextLabel
-	local label = Instance.new("TextLabel")
-	label.Name = name
-	label.Position = pos
-	label.Size = size
-	label.BackgroundTransparency = 1
-	label.Text = text
-	label.TextSize = textSize
-	label.TextColor3 = color
-	label.TextStrokeTransparency = 0.2
-	label.Font = Enum.Font.GothamBold
-	label.Parent = parent
-	return label
+-- The nearest conveyor brainrot model to the player, within a range.
+local function nearestBeltBrainrot(range)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return nil
+	end
+	local arena = workspace:FindFirstChild("RumbleArena")
+	if not arena then
+		return nil
+	end
+	local best = nil
+	local bestDist = range
+	for _, model in ipairs(arena:GetChildren()) do
+		if model:IsA("Model") and model:GetAttribute("Uid") then
+			local dist = (model:GetPivot().Position - root.Position).Magnitude
+			if dist < bestDist then
+				bestDist = dist
+				best = model
+			end
+		end
+	end
+	return best
 end
 
-local function makeButton(parent: Instance, name: string, pos: UDim2, size: UDim2, text: string, color: Color3): TextButton
-	local button = Instance.new("TextButton")
-	button.Name = name
-	button.Position = pos
-	button.Size = size
-	button.BackgroundColor3 = color
-	button.Text = text
-	button.TextColor3 = Color3.fromRGB(255, 255, 255)
-	button.TextSize = 18
-	button.Font = Enum.Font.GothamBold
-	button.Parent = parent
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
-	corner.Parent = button
-	return button
+-- The nearest owned brainrot model (someone's pen) to the player.
+local function nearestPenBrainrot(range)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return nil
+	end
+	local folder = workspace:FindFirstChild("OwnedBrainrots")
+	if not folder then
+		return nil
+	end
+	local best = nil
+	local bestDist = range
+	for _, model in ipairs(folder:GetChildren()) do
+		if model:IsA("Model") then
+			local dist = (model:GetPivot().Position - root.Position).Magnitude
+			if dist < bestDist then
+				bestDist = dist
+				best = model
+			end
+		end
+	end
+	return best
 end
 
--- Top-centre money bar: cash, $/s, rebirths.
-local moneyBar = Instance.new("Frame")
-moneyBar.Name = "MoneyBar"
-moneyBar.AnchorPoint = Vector2.new(0.5, 0)
-moneyBar.Position = UDim2.new(0.5, 0, 0, 12)
-moneyBar.Size = UDim2.fromOffset(460, 64)
-moneyBar.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
-moneyBar.BackgroundTransparency = 0.15
-moneyBar.BorderSizePixel = 0
-moneyBar.Parent = gui
-local moneyCorner = Instance.new("UICorner")
-moneyCorner.CornerRadius = UDim.new(0, 14)
-moneyCorner.Parent = moneyBar
-
-local cashLabel = makeLabel(moneyBar, "Cash", UDim2.new(0, 12, 0, 4), UDim2.new(0.6, 0, 0.55, 0), "$100", 28, Color3.fromRGB(140, 255, 140))
-cashLabel.TextXAlignment = Enum.TextXAlignment.Left
-local perSecondLabel = makeLabel(moneyBar, "PerSecond", UDim2.new(0.6, 0, 0, 8), UDim2.new(0.4, -12, 0.5, 0), "+$0/s", 20, Color3.fromRGB(255, 255, 255))
-perSecondLabel.TextXAlignment = Enum.TextXAlignment.Right
-local rebirthLabel = makeLabel(moneyBar, "Rebirths", UDim2.new(0, 12, 0.55, 0), UDim2.new(1, -24, 0.4, 0), "Rebirths: 0  |  Base: 0/8", 16, Color3.fromRGB(200, 200, 220))
-rebirthLabel.TextXAlignment = Enum.TextXAlignment.Left
-
--- The wave timer, under the money bar; hidden until a wave is coming.
-local waveLabel = makeLabel(gui, "WaveTimer", UDim2.new(0.5, 0, 0, 84), UDim2.fromOffset(460, 36), "", 22, Color3.fromRGB(255, 210, 90))
-waveLabel.AnchorPoint = Vector2.new(0.5, 0)
-waveLabel.Visible = false
-
--- The alert line for thief news, top-right.
-local alertLabel = makeLabel(gui, "Alert", UDim2.new(1, -380, 0, 12), UDim2.fromOffset(368, 60), "", 18, Color3.fromRGB(255, 90, 90))
-alertLabel.TextWrapped = true
-alertLabel.TextXAlignment = Enum.TextXAlignment.Right
-
--- Bottom-right shop panel: lock, rebirth, upgrades.
-local shop = Instance.new("Frame")
-shop.Name = "Shop"
-shop.AnchorPoint = Vector2.new(1, 1)
-shop.Position = UDim2.new(1, -16, 1, -16)
-shop.Size = UDim2.fromOffset(250, 250)
-shop.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
-shop.BackgroundTransparency = 0.15
-shop.BorderSizePixel = 0
-shop.Parent = gui
-local shopCorner = Instance.new("UICorner")
-shopCorner.CornerRadius = UDim.new(0, 14)
-shopCorner.Parent = shop
-makeLabel(shop, "ShopTitle", UDim2.new(0, 0, 0, 6), UDim2.new(1, 0, 0, 28), "SHOP", 20, Color3.fromRGB(255, 255, 255))
-local lockButton = makeButton(shop, "LockButton", UDim2.new(0, 12, 0, 40), UDim2.new(1, -24, 0, 40), "🔒 Lock Base ($500)", Color3.fromRGB(200, 60, 60))
-local rebirthButton = makeButton(shop, "RebirthButton", UDim2.new(0, 12, 0, 88), UDim2.new(1, -24, 0, 40), "✨ Rebirth ($25K)", Color3.fromRGB(150, 90, 255))
-local bootsButton = makeButton(shop, "BootsButton", UDim2.new(0, 12, 0, 136), UDim2.new(1, -24, 0, 40), "👟 Speed Boots ($1K)", Color3.fromRGB(90, 140, 255))
-local magnetButton = makeButton(shop, "MagnetButton", UDim2.new(0, 12, 0, 184), UDim2.new(1, -24, 0, 40), "🧲 Money Magnet ($2.5K)", Color3.fromRGB(90, 200, 120))
-local lockStatus = makeLabel(shop, "LockStatus", UDim2.new(0, 12, 0, 222), UDim2.new(1, -24, 0, 22), "Base: UNLOCKED", 15, Color3.fromRGB(255, 120, 120))
-
--- Toast popups, centre screen, fading out on their own.
-local toast = makeLabel(gui, "Toast", UDim2.new(0.5, 0, 0.35, 0), UDim2.fromOffset(560, 40), "", 22, Color3.fromRGB(255, 255, 255))
-toast.AnchorPoint = Vector2.new(0.5, 0)
-toast.Visible = false
-
-local function showToast(text: string, color: Color3?)
-	toast.Text = text
-	toast.TextColor3 = color or Color3.fromRGB(255, 255, 255)
-	toast.Visible = true
-	task.delay(3, function()
-		toast.Visible = false
-	end)
+local function bindKey(name, key, fn)
+	ContextActionService:BindAction(name, function(_, state, _)
+		if state == Enum.UserInputState.Begin then
+			fn()
+		end
+	end, false, key)
 end
 
--- HUD updates from the server, once a second.
-local latestPerSecond = 0
-CashUpdate.OnClientEvent:Connect(function(snapshot)
-	latestPerSecond = snapshot.PerSecond
-	cashLabel.Text = BrainrotDefs.formatMoney(snapshot.Cash)
-	perSecondLabel.Text = "+" .. BrainrotDefs.formatMoney(snapshot.PerSecond) .. "/s"
-	rebirthLabel.Text = "Rebirths: " .. snapshot.Rebirths .. "  |  Base: " .. snapshot.OwnedCount .. "/" .. snapshot.BaseSlots
-	rebirthButton.Text = "✨ Rebirth (" .. BrainrotDefs.formatMoney(snapshot.RebirthCost) .. ")"
-	if snapshot.Locked then
-		lockStatus.Text = "Base: LOCKED (" .. snapshot.LockLeft .. "s)"
-		lockStatus.TextColor3 = Color3.fromRGB(140, 255, 140)
-		lockButton.Text = "🔒 Locked!"
-	else
-		lockStatus.Text = "Base: UNLOCKED"
-		lockStatus.TextColor3 = Color3.fromRGB(255, 120, 120)
-		lockButton.Text = "🔒 Lock Base ($500)"
+bindKey("RumbleBuy", Enum.KeyCode.E, function()
+	local model = nearestBeltBrainrot(14)
+	if model then
+		remotes.BuyBrainrot:FireServer(model:GetAttribute("Uid"))
 	end
 end)
 
-Popup.OnClientEvent:Connect(function(text: string)
-	showToast(text)
-end)
-
-ThiefAlert.OnClientEvent:Connect(function(text: string)
-	alertLabel.Text = text
-	task.delay(6, function()
-		alertLabel.Text = ""
-	end)
-end)
-
-LockUpdate.OnClientEvent:Connect(function(playerName: string, locked: boolean)
-	if locked then
-		showToast(playerName .. " locked their base!", Color3.fromRGB(140, 255, 140))
+bindKey("RumbleSteal", Enum.KeyCode.F, function()
+	local model = nearestPenBrainrot(9)
+	if model then
+		remotes.StealStart:FireServer(model:GetPivot().Position)
 	end
 end)
 
--- Buy fanfare: a burst of particles at the buyer's base + a toast.
-BoughtBrainrot.OnClientEvent:Connect(function(buyerName: string, brainrotName: string, rarity: string, mutation: string)
-	showToast(buyerName .. " bought " .. brainrotName .. "!", BrainrotDefs.RarityColors[rarity])
+bindKey("RumbleSlap", Enum.KeyCode.One, function()
+	remotes.UseWeapon:FireServer("Slap")
 end)
 
--- Rebirth confetti: coloured parts raining from the sky over the
--- whole map, plus a toast.
+bindKey("RumbleFreeze", Enum.KeyCode.Two, function()
+	remotes.UseWeapon:FireServer("Freeze")
+end)
+
+bindKey("RumblePull", Enum.KeyCode.Three, function()
+	remotes.UseWeapon:FireServer("Pull")
+end)
+
+bindKey("RumbleLock", Enum.KeyCode.L, function()
+	remotes.LockBase:FireServer()
+end)
+
+bindKey("RumbleRebirth", Enum.KeyCode.R, function()
+	remotes.Rebirth:FireServer()
+end)
+
+bindKey("RumbleSpin", Enum.KeyCode.Q, function()
+	remotes.SpinWheel:FireServer()
+end)
+
+-- A burst of particles at a position: coloured sparks that rise and fade.
+local function burst(position, color)
+	local emitter = Instance.new("Part")
+	emitter.Name = "Burst"
+	emitter.Size = Vector3.new(0.2, 0.2, 0.2)
+	emitter.Transparency = 1
+	emitter.Anchored = true
+	emitter.CanCollide = false
+	emitter.Position = position
+	emitter.Parent = workspace
+	local particles = Instance.new("ParticleEmitter")
+	particles.Color = ColorSequence.new(color)
+	particles.Size = NumberSequence.new(0.6)
+	particles.Speed = NumberRange.new(8, 16)
+	particles.Lifetime = NumberRange.new(0.5, 0.9)
+	particles.Rate = 60
+	particles.SpreadAngle = Vector2.new(180, 180)
+	particles.Parent = emitter
+	task.delay(1, function()
+		emitter:Destroy()
+	end)
+end
+
+-- Confetti: forty bright squares that rain from above the player.
 local function confetti()
-	local camera = workspace.CurrentCamera
-	if not camera then
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not root then
 		return
 	end
-	local focus = camera.Focus.Position
-	for _ = 1, 80 do
+	local colors = {
+		Color3.fromRGB(255, 90, 110), Color3.fromRGB(255, 200, 60),
+		Color3.fromRGB(90, 200, 255), Color3.fromRGB(120, 220, 120),
+		Color3.fromRGB(190, 110, 255),
+	}
+	for _ = 1, 40 do
 		local piece = Instance.new("Part")
-		piece.Size = Vector3.new(0.6, 0.2, 0.6)
-		piece.Color = Color3.fromRGB(math.random(0, 255), math.random(0, 255), math.random(0, 255))
-		piece.Material = Enum.Material.Neon
+		piece.Size = Vector3.new(0.5, 0.1, 0.5)
+		piece.Color = colors[math.random(1, #colors)]
 		piece.Anchored = false
 		piece.CanCollide = false
-		piece.Position = focus + Vector3.new(math.random(-30, 30), 30 + math.random(0, 15), math.random(-30, 30))
+		piece.Position = root.Position + Vector3.new(math.random(-12, 12), math.random(14, 22), math.random(-12, 12))
 		piece.Parent = workspace
-		task.delay(4, function()
+		task.delay(3, function()
 			piece:Destroy()
 		end)
 	end
 end
 
-RebirthDone.OnClientEvent:Connect(function(playerName: string, rebirths: number)
-	confetti()
-	showToast(playerName .. " REBIRTHED! Now x" .. rebirths .. " (+25% $/s each)", Color3.fromRGB(190, 110, 255))
-end)
+-- Camera shake: a short random offset that decays.
+local shakeTime = 0
+local shakePower = 0
+local function shake(power, seconds)
+	shakePower = power
+	shakeTime = seconds
+end
 
--- The wave: a countdown, then screen shake when it hits.
-local shakeUntil = 0
-WaveWarning.OnClientEvent:Connect(function(seconds: number)
-	waveLabel.Visible = true
-	task.spawn(function()
-		for left = seconds, 1, -1 do
-			waveLabel.Text = "🌊 NOODLE TSUNAMI IN " .. left .. "s — RUN HOME!"
-			task.wait(1)
-		end
-		waveLabel.Visible = false
-	end)
-end)
-
-WaveHit.OnClientEvent:Connect(function()
-	shakeUntil = os.clock() + 1.2
-	showToast("🌊 THE NOODLE TSUNAMI SWEPT THE CONVEYOR!", Color3.fromRGB(255, 210, 90))
-end)
-
--- Screen shake: jitter the camera while the wave is hitting.
 RunService.RenderStepped:Connect(function()
-	local camera = workspace.CurrentCamera
-	if not camera or os.clock() > shakeUntil then
-		return
+	if shakeTime > 0 then
+		shakeTime = shakeTime - 1 / 60
+		local offset = Vector3.new(
+			(math.random() - 0.5) * shakePower,
+			(math.random() - 0.5) * shakePower,
+			0
+		)
+		camera.CFrame = camera.CFrame * CFrame.new(offset)
+		if shakeTime <= 0 then
+			shakePower = 0
+		end
 	end
-	local offset = Vector3.new(math.random(-1, 1) * 0.6, math.random(-1, 1) * 0.6, 0)
-	camera.CFrame = camera.CFrame + offset
 end)
 
--- Shop buttons talk to the server.
-lockButton.MouseButton1Click:Connect(function()
-	BuyLock:FireServer()
-end)
-rebirthButton.MouseButton1Click:Connect(function()
-	Rebirth:FireServer()
-end)
-bootsButton.MouseButton1Click:Connect(function()
-	BuyUpgrade:FireServer("SpeedBoots")
-end)
-magnetButton.MouseButton1Click:Connect(function()
-	BuyUpgrade:FireServer("MoneyMagnet")
+-- A floating "+$123" popup that rises and fades above a spot.
+local function cashPopup(position, text)
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.new(0, 120, 0, 30)
+	gui.StudsOffset = Vector3.new(0, 3, 0)
+	gui.AlwaysOnTop = true
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 20
+	label.Text = text
+	label.TextColor3 = Color3.fromRGB(140, 255, 140)
+	label.TextStrokeTransparency = 0.3
+	label.Parent = gui
+	local anchor = Instance.new("Part")
+	anchor.Size = Vector3.new(0.2, 0.2, 0.2)
+	anchor.Transparency = 1
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.Position = position
+	anchor.Parent = workspace
+	gui.Parent = anchor
+	local goal = { StudsOffset = Vector3.new(0, 7, 0) }
+	TweenService:Create(gui, TweenInfo.new(1.2), goal):Play()
+	task.delay(1.3, function()
+		anchor:Destroy()
+	end)
+end
+
+remotes.BrainrotBought.OnClientEvent:Connect(function(name, mutation, _slot)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if root then
+		burst(root.Position + Vector3.new(0, 3, 0), Color3.fromRGB(255, 215, 0))
+	end
 end)
 
--- Cash popups: every few seconds, a floating "+$X" rises over the
--- player's own base, so the money ticking is visible in the world.
+remotes.RebirthDone.OnClientEvent:Connect(function()
+	confetti()
+	shake(1.2, 0.6)
+end)
+
+remotes.TsunamiHit.OnClientEvent:Connect(function()
+	shake(2.5, 1.2)
+end)
+
+remotes.WeaponHit.OnClientEvent:Connect(function()
+	shake(1.5, 0.5)
+end)
+
+remotes.StealDone.OnClientEvent:Connect(function()
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if root then
+		burst(root.Position + Vector3.new(0, 3, 0), Color3.fromRGB(255, 90, 110))
+	end
+end)
+
+-- Cash popups: every few seconds, float the income above the player.
+local lastIncome = 0
+remotes.HudUpdate.OnClientEvent:Connect(function(snapshot)
+	lastIncome = snapshot.Income or 0
+end)
 task.spawn(function()
 	while true do
 		task.wait(3)
-		local character = player.Character
-		if not character then
-			continue
-		end
-		local root = character:FindFirstChild("HumanoidRootPart")
-		if root then
-			local popup = Instance.new("BillboardGui")
-			popup.Size = UDim2.fromOffset(120, 30)
-			popup.StudsOffsetWorldSpace = Vector3.new(0, 4, 0)
-			popup.AlwaysOnTop = true
-			popup.Parent = root
-			local label = Instance.new("TextLabel")
-			label.Size = UDim2.fromScale(1, 1)
-			label.BackgroundTransparency = 1
-			label.Text = "+" .. BrainrotDefs.formatMoney(latestPerSecond)
-			label.TextColor3 = Color3.fromRGB(140, 255, 140)
-			label.TextSize = 20
-			label.Font = Enum.Font.GothamBold
-			label.Parent = popup
-			task.delay(1.5, function()
-				popup:Destroy()
-			end)
+		if lastIncome > 0 then
+			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			if root then
+				cashPopup(root.Position, "+$" .. tostring(lastIncome * 3))
+			end
 		end
 	end
 end)

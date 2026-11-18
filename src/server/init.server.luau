@@ -1,8 +1,10 @@
--- Brainrot Bay: the server entry point. It builds the world, creates
--- the RemoteEvents the client talks through, and starts the three
--- services -- ConveyorService (the buy loop), EconomyService (the
--- money) and ThreatService (the thief and the wave). State lives in
--- one place: the States table of GameState player states.
+-- Brainrot Rumble: the server entry point. It builds the arena, creates
+-- the RemoteEvents the client talks through, hands each player a plot and
+-- a fresh state, and starts the five services: ConveyorService (the buy
+-- loop), EconomyService (the money), CombatService (weapons and steals),
+-- ThreatService (thief, tsunami, meteors) and SpinService (the wheel).
+-- The client never moves money or brainrots itself; every action arrives
+-- here as a RemoteEvent and is validated by the service that owns it.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -10,103 +12,82 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local WorldBuilder = require(script.Parent.WorldBuilder)
 local ConveyorService = require(script.Parent.ConveyorService)
 local EconomyService = require(script.Parent.EconomyService)
+local CombatService = require(script.Parent.CombatService)
 local ThreatService = require(script.Parent.ThreatService)
+local SpinService = require(script.Parent.SpinService)
+local GameState = require(ReplicatedStorage.Shared.GameState)
 
--- The RemoteEvents, one folder in ReplicatedStorage. The client only
--- ever receives through these; the server is authoritative.
+-- The arena, built once.
+local world = WorldBuilder.Build()
+
+-- The RemoteEvents, one folder, one per action or broadcast.
 local remotesFolder = Instance.new("Folder")
-remotesFolder.Name = "BrainrotBayRemotes"
+remotesFolder.Name = "RumbleRemotes"
 remotesFolder.Parent = ReplicatedStorage
-
-local function remoteEvent(name: string): RemoteEvent
-	local event = Instance.new("RemoteEvent")
-	event.Name = name
-	event.Parent = remotesFolder
-	return event
+local remoteNames = {
+	"BuyBrainrot", "LockBase", "BuyUpgrade", "Rebirth", "UseWeapon",
+	"StealStart", "SpinWheel", "HudUpdate", "Toast", "ToastAll",
+	"BrainrotBought", "RebirthDone", "WeaponSwung", "WeaponHit",
+	"StealStarted", "StealStopped", "StealDone", "SpinResult",
+	"ThiefComing", "TsunamiWarning", "TsunamiHit",
+}
+local remotes = {}
+for _, name in ipairs(remoteNames) do
+	local remote = Instance.new("RemoteEvent")
+	remote.Name = name
+	remote.Parent = remotesFolder
+	remotes[name] = remote
 end
 
-local Remotes = {
-	CashUpdate = remoteEvent("CashUpdate"), -- server -> client, HUD snapshot, 1/s
-	BoughtBrainrot = remoteEvent("BoughtBrainrot"), -- server -> all, buy fanfare
-	WaveWarning = remoteEvent("WaveWarning"), -- server -> all, wave countdown
-	WaveHit = remoteEvent("WaveHit"), -- server -> all, the wave just hit
-	ThiefAlert = remoteEvent("ThiefAlert"), -- server -> all, Stan news
-	LockUpdate = remoteEvent("LockUpdate"), -- server -> all, a base locked
-	RebirthDone = remoteEvent("RebirthDone"), -- server -> all, confetti time
-	Popup = remoteEvent("Popup"), -- server -> one client, a toast message
-	BuyLock = remoteEvent("BuyLock"), -- client -> server, buy a base lock
-	Rebirth = remoteEvent("Rebirth"), -- client -> server, rebirth me
-	BuyUpgrade = remoteEvent("BuyUpgrade"), -- client -> server, buy a shop upgrade
-}
+-- One state per player, plus the plot each one owns.
+local states = {}
+local freePlots = { 1, 2, 3, 4 }
 
--- One shared state table: Player -> GameState player state.
-local States = {}
-
--- The four base plots, matched to the centres WorldBuilder used.
-local PlotCenters = {
-	Vector3.new(-30, 1, 26),
-	Vector3.new(30, 1, 26),
-	Vector3.new(-30, 1, -26),
-	Vector3.new(30, 1, -26),
-}
-local PlotsTaken = { false, false, false, false }
-local Plots = {} -- Player -> plot centre
-
--- Build the island.
-local world = WorldBuilder.build(workspace)
-
--- Start the services. The conveyor starts first: it needs the
--- States/Plots tables the economy fills in as players join.
-local Conveyor = ConveyorService.start({
-	States = States,
-	Plots = Plots,
-	Remotes = Remotes,
-	Workspace = workspace,
-})
-EconomyService.start({
-	States = States,
-	Plots = Plots,
-	PlotCenters = PlotCenters,
-	PlotsTaken = PlotsTaken,
-	Remotes = Remotes,
-	Workspace = workspace,
-	Conveyor = Conveyor,
-})
-ThreatService.start({
-	States = States,
-	Plots = Plots,
-	Remotes = Remotes,
-	Workspace = workspace,
-	Conveyor = Conveyor,
-})
-
--- Re-apply Speed Boots on respawn (the upgrade survives death).
-Players.PlayerAdded:Connect(function(player: Player)
-	player.CharacterAdded:Connect(function(character: Model)
-		local state = States[player]
-		if state and state.Upgrades.SpeedBoots then
-			local humanoid = character:WaitForChild("Humanoid", 5)
-			if humanoid and humanoid:IsA("Humanoid") then
-				humanoid.WalkSpeed = 16 * 1.3
-			end
-		end
-	end)
-end)
-
--- The clouds drift slowly across the sky, for life.
-task.spawn(function()
-	while true do
-		task.wait(1)
-		for _, cloud in ipairs(world:GetChildren()) do
-			if cloud.Name == "Cloud" and cloud:IsA("Model") then
-				local cf = cloud:GetPivot()
-				cloud:PivotTo(cf + Vector3.new(0.4, 0, 0))
-				if cf.Position.X > 120 then
-					cloud:PivotTo(CFrame.new(Vector3.new(-120, cf.Position.Y, cf.Position.Z)))
-				end
-			end
-		end
+local function givePlot()
+	if #freePlots > 0 then
+		return table.remove(freePlots, 1)
 	end
-end)
+	return 1 -- arena full: share plot 1 rather than refuse a player
+end
 
-print("[Brainrot Bay] Server started: island built, conveyor running, threats armed.")
+local function onPlayerAdded(player)
+	local state = GameState.NewPlayer()
+	state.PlotIndex = givePlot()
+	states[player] = state
+	player.CharacterAdded:Connect(function(character)
+		local humanoid = character:WaitForChild("Humanoid")
+		humanoid.WalkSpeed = GameState.WalkSpeed(state)
+	end)
+	remotes.Toast:FireClient(player, "Welcome to Brainrot Rumble! Buy brainrots, defend your base, spin the wheel!")
+end
+
+local function onPlayerRemoving(player)
+	local state = states[player]
+	if state and state.PlotIndex >= 1 and state.PlotIndex <= 4 then
+		table.insert(freePlots, state.PlotIndex)
+	end
+	states[player] = nil
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+Players.PlayerRemoving:Connect(onPlayerRemoving)
+for _, player in ipairs(Players:GetPlayers()) do
+	onPlayerAdded(player)
+end
+
+-- The shared context every service gets.
+local context = {
+	Remotes = remotes,
+	States = states,
+	World = world,
+	Conveyor = ConveyorService,
+	Combat = CombatService,
+}
+
+ConveyorService.Start(context)
+EconomyService.Start(context)
+CombatService.Start(context)
+ThreatService.Start(context)
+SpinService.Start(context)
+
+print("Brainrot Rumble server ready: arena built, " .. #remoteNames .. " remotes live.")

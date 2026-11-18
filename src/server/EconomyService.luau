@@ -1,153 +1,118 @@
--- Brainrot Bay: EconomyService owns the money.
--- Every second it adds each player's $/s to their cash, then sends
--- the HUD snapshot to the client. It also handles the three things
--- cash buys outside the conveyor: the base lock, shop upgrades and
--- rebirth. All state lives in GameState; this service just moves it.
+-- Brainrot Rumble: EconomyService owns the money. Every second it pays
+-- each player their $/s and sends a fresh HUD snapshot to the client. It
+-- also handles the three things a player spends on: the base lock, the
+-- shop upgrades, and rebirth. The client never moves money itself; every
+-- spend arrives here as a RemoteEvent and is validated against GameState.
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Config = require(ReplicatedStorage.Shared.Config)
-local BrainrotDefs = require(ReplicatedStorage.Shared.BrainrotDefs)
-local GameState = require(ReplicatedStorage.Shared.GameState)
+local RumbleConfig = require(game:GetService("ReplicatedStorage").Shared.RumbleConfig)
+local GameState = require(game:GetService("ReplicatedStorage").Shared.GameState)
+local MoneyFormat = require(game:GetService("ReplicatedStorage").Shared.MoneyFormat)
 
 local EconomyService = {}
 
--- Start the service. deps: { States, Remotes }.
-function EconomyService.start(deps)
-	local states = deps.States
-	local remotes = deps.Remotes
-	local Players = game:GetService("Players")
+local context = nil
 
-	-- The money tick: once a second, every player earns their $/s.
+-- Send one player their fresh snapshot.
+local function pushSnapshot(player)
+	local state = context.States[player]
+	if not state then
+		return
+	end
+	context.Remotes.HudUpdate:FireClient(player, GameState.Snapshot(state, os.time()))
+end
+
+local function lockBase(player)
+	local state = context.States[player]
+	if not state then
+		return
+	end
+	local now = os.time()
+	if GameState.IsLocked(state, now) then
+		context.Remotes.Toast:FireClient(player, "Your base is already locked!")
+		return
+	end
+	if not GameState.Spend(state, RumbleConfig.LockPrice) then
+		context.Remotes.Toast:FireClient(player, "Lock costs " .. MoneyFormat.Cash(RumbleConfig.LockPrice) .. "!")
+		return
+	end
+	state.LockUntil = now + RumbleConfig.LockSeconds
+	local gate = context.World.Gates[state.PlotIndex]
+	if gate then
+		gate.Visible = true
+	end
+	context.Remotes.Toast:FireClient(player, "Base locked for " .. RumbleConfig.LockSeconds .. "s!")
+	pushSnapshot(player)
+end
+
+local function buyUpgrade(player, name)
+	local state = context.States[player]
+	if not state then
+		return
+	end
+	local upgrade = RumbleConfig.Upgrades[name]
+	if not upgrade then
+		return
+	end
+	local level = state.Upgrades[name] or 0
+	if level >= upgrade.Max then
+		context.Remotes.Toast:FireClient(player, upgrade.Label .. " is maxed out!")
+		return
+	end
+	local price = upgrade.Price * (level + 1)
+	if not GameState.Spend(state, price) then
+		context.Remotes.Toast:FireClient(player, upgrade.Label .. " costs " .. MoneyFormat.Cash(price) .. "!")
+		return
+	end
+	state.Upgrades[name] = level + 1
+	context.Remotes.Toast:FireClient(player, upgrade.Label .. " upgraded to level " .. (level + 1) .. "!")
+	pushSnapshot(player)
+end
+
+local function rebirth(player)
+	local state = context.States[player]
+	if not state then
+		return
+	end
+	local price = GameState.RebirthPrice(state)
+	if not GameState.HasCash(state, price) then
+		context.Remotes.Toast:FireClient(player, "Rebirth costs " .. MoneyFormat.Cash(price) .. "!")
+		return
+	end
+	GameState.ApplyRebirth(state)
+	context.Conveyor.ClearAllPens()
+	context.Remotes.RebirthDone:FireClient(player, state.Rebirths, state.Multiplier)
+	context.Remotes.Toast:FireClient(player, "REBIRTH #" .. state.Rebirths .. "! Income x" .. string.format("%.2f", state.Multiplier))
+	pushSnapshot(player)
+end
+
+function EconomyService.Start(ctx)
+	context = ctx
+	context.Remotes.LockBase.OnServerEvent:Connect(lockBase)
+	context.Remotes.BuyUpgrade.OnServerEvent:Connect(buyUpgrade)
+	context.Remotes.Rebirth.OnServerEvent:Connect(rebirth)
+
+	-- The money tick: once a second, pay everyone and refresh their HUD.
 	task.spawn(function()
 		while true do
-			task.wait(Config.TickInterval)
-			for player, state in pairs(states) do
-				local income = GameState.incomePerSecond(state)
+			task.wait(1)
+			local now = os.time()
+			for player, state in pairs(context.States) do
+				local income = GameState.IncomePerSecond(state, now)
 				if income > 0 then
-					GameState.addCash(state, income)
+					GameState.AddCash(state, income)
 				end
-				local leaderstats = player:FindFirstChild("leaderstats")
-				if leaderstats then
-					local cashValue = leaderstats:FindFirstChild("Cash")
-					if cashValue then
-						cashValue.Value = math.floor(state.Cash + 0.5)
+				-- A lock that ran out hides its gate again.
+				if state.LockUntil > 0 and now >= state.LockUntil then
+					state.LockUntil = 0
+					local gate = context.World.Gates[state.PlotIndex]
+					if gate then
+						gate.Visible = false
 					end
 				end
-				remotes.CashUpdate:FireClient(player, GameState.snapshot(state))
+				pushSnapshot(player)
 			end
 		end
 	end)
-
-	-- Lock the base: costs cash, keeps Sticky-Fingers Stan out for
-	-- Config.LockDuration seconds.
-	remotes.BuyLock.OnServerEvent:Connect(function(player: Player)
-		local state = states[player]
-		if not state then
-			return
-		end
-		if GameState.isLocked(state) then
-			remotes.Popup:FireClient(player, "Your base is already locked!")
-			return
-		end
-		if not GameState.spend(state, Config.LockCost) then
-			remotes.Popup:FireClient(player, "Lock costs " .. BrainrotDefs.formatMoney(Config.LockCost) .. "!")
-			return
-		end
-		state.LockUntil = os.clock() + Config.LockDuration
-		remotes.LockUpdate:FireAllClients(player.Name, true, Config.LockDuration)
-		remotes.Popup:FireClient(player, "Base locked for " .. Config.LockDuration .. "s! Stan can't touch you.")
-	end)
-
-	-- Rebirth: reset cash and brainrots for a permanent +25% $/s.
-	remotes.Rebirth.OnServerEvent:Connect(function(player: Player)
-		local state = states[player]
-		if not state then
-			return
-		end
-		local cost = GameState.rebirthCost(state)
-		if not GameState.rebirth(state) then
-			remotes.Popup:FireClient(player, "Rebirth costs " .. BrainrotDefs.formatMoney(cost) .. "!")
-			return
-		end
-		-- Clear the bought brainrot models off the base.
-		local conveyor = deps.Workspace:FindFirstChild("ConveyorBrainrots")
-		if conveyor then
-			local plotCenter = deps.Plots[player]
-			if plotCenter then
-				for slot = 1, Config.BaseSlots do
-					deps.Conveyor.removeOwnedModel(plotCenter, slot)
-				end
-			end
-		end
-		remotes.RebirthDone:FireAllClients(player.Name, state.Rebirths)
-		remotes.Popup:FireClient(player, "REBIRTH " .. state.Rebirths .. "! +25% $/s forever!")
-	end)
-
-	-- Shop upgrades: Speed Boots (+30% walk speed) and Money Magnet.
-	remotes.BuyUpgrade.OnServerEvent:Connect(function(player: Player, upgradeName: string)
-		local state = states[player]
-		if not state then
-			return
-		end
-		local upgrade = Config.Upgrades[upgradeName]
-		if not upgrade then
-			return
-		end
-		if state.Upgrades[upgradeName] then
-			remotes.Popup:FireClient(player, "You already own " .. upgrade.Name .. "!")
-			return
-		end
-		if not GameState.spend(state, upgrade.Cost) then
-			remotes.Popup:FireClient(player, upgrade.Name .. " costs " .. BrainrotDefs.formatMoney(upgrade.Cost) .. "!")
-			return
-		end
-		state.Upgrades[upgradeName] = true
-		if upgradeName == "SpeedBoots" then
-			local character = player.Character
-			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-			if humanoid then
-				humanoid.WalkSpeed = 16 * 1.3
-			end
-		end
-		remotes.Popup:FireClient(player, "Bought " .. upgrade.Name .. "! " .. upgrade.Description)
-	end)
-
-	-- New player: fresh state, a leaderstat, and a base plot.
-	Players.PlayerAdded:Connect(function(player: Player)
-		states[player] = GameState.newPlayerState(player)
-		local leaderstats = Instance.new("Folder")
-		leaderstats.Name = "leaderstats"
-		local cashValue = Instance.new("IntValue")
-		cashValue.Name = "Cash"
-		cashValue.Value = 100
-		cashValue.Parent = leaderstats
-		local rebirthValue = Instance.new("IntValue")
-		rebirthValue.Name = "Rebirths"
-		rebirthValue.Value = 0
-		rebirthValue.Parent = leaderstats
-		leaderstats.Parent = player
-		-- Hand out the first free plot.
-		for i, taken in ipairs(deps.PlotsTaken) do
-			if not taken then
-				deps.PlotsTaken[i] = player
-				deps.Plots[player] = deps.PlotCenters[i]
-				break
-			end
-		end
-		remotes.CashUpdate:FireClient(player, GameState.snapshot(states[player]))
-	end)
-
-	Players.PlayerRemoving:Connect(function(player: Player)
-		states[player] = nil
-		for i, taken in ipairs(deps.PlotsTaken) do
-			if taken == player then
-				deps.PlotsTaken[i] = false
-			end
-		end
-		deps.Plots[player] = nil
-	end)
-
-	return EconomyService
 end
 
 return EconomyService

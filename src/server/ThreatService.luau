@@ -1,26 +1,29 @@
--- Brainrot Bay: ThreatService runs the two things that make the
--- player dash home. (1) Sticky-Fingers Stan, an NPC thief who visits
--- every ~75 seconds, walks to a random unlocked base and needs 6
--- uninterrupted seconds to steal a brainrot -- a player who touches
--- him shoos him away. (2) The Noodle Tsunami: every ~150 seconds a
--- 15-second warning sounds, then a giant noodle wave sweeps the
--- conveyor (unbought brainrots wash away) and knocks every player
--- backwards. A locked base is safe from Stan, never from the wave.
+-- Brainrot Rumble: ThreatService runs the three things that make the
+-- player dash home. (1) Si Cilok Nakal, an NPC thief who visits on a
+-- timer, walks to a random unlocked base and needs seconds to steal its
+-- richest brainrot — touch him to shoo him away. (2) The giant noodle
+-- tsunami: a warning counts down, then a noodle wall sweeps the belt,
+-- washing away every unbought brainrot and shoving players backwards.
+-- (3) A meteor noodle shower: flaming noodles rain down and leave
+-- pickups worth cash where they land.
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Config = require(ReplicatedStorage.Shared.Config)
-local GameState = require(ReplicatedStorage.Shared.GameState)
+local RumbleConfig = require(game:GetService("ReplicatedStorage").Shared.RumbleConfig)
+local BrainrotCatalog = require(game:GetService("ReplicatedStorage").Shared.BrainrotCatalog)
+local GameState = require(game:GetService("ReplicatedStorage").Shared.GameState)
+local MoneyFormat = require(game:GetService("ReplicatedStorage").Shared.MoneyFormat)
 
 local ThreatService = {}
 
--- Build Stan: a shifty blocky thief in a striped shirt and a mask.
-local function buildThief(): Model
+local context = nil
+
+-- Build Si Cilok Nakal: a red-hatted vendor with a very suspicious grin.
+local function buildThief()
 	local model = Instance.new("Model")
-	model.Name = "StickyFingersStan"
+	model.Name = "SiCilokNakal"
 	local body = Instance.new("Part")
 	body.Name = "Body"
-	body.Size = Vector3.new(3, 3.4, 2.4)
-	body.Color = Color3.fromRGB(40, 40, 45)
+	body.Size = Vector3.new(3, 3.5, 2)
+	body.Color = Color3.fromRGB(220, 60, 60)
 	body.Anchored = true
 	body.CanCollide = false
 	body.Parent = model
@@ -28,202 +31,250 @@ local function buildThief(): Model
 	local head = Instance.new("Part")
 	head.Name = "Head"
 	head.Size = Vector3.new(2.4, 2.2, 2.4)
-	head.Color = Color3.fromRGB(230, 190, 150)
+	head.Color = Color3.fromRGB(240, 200, 150)
 	head.Anchored = true
 	head.CanCollide = false
-	head.Position = body.Position + Vector3.new(0, 2.8, 0)
+	head.Position = Vector3.new(0, 2.85, 0)
 	head.Parent = model
-	local mask = Instance.new("Part")
-	mask.Name = "Mask"
-	mask.Size = Vector3.new(0.3, 0.6, 2)
-	mask.Color = Color3.fromRGB(15, 15, 15)
-	mask.Anchored = true
-	mask.CanCollide = false
-	mask.Position = head.Position + Vector3.new(1.25, 0.4, 0)
-	mask.Parent = model
-	local sack = Instance.new("Part")
-	sack.Name = "Sack"
-	sack.Size = Vector3.new(2, 2.4, 1.6)
-	sack.Color = Color3.fromRGB(150, 110, 60)
-	sack.Anchored = true
-	sack.CanCollide = false
-	sack.Position = body.Position + Vector3.new(-1.9, 0.5, 0)
-	sack.Parent = model
-	-- The label above his head, so everyone knows who he is.
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "ThiefLabel"
-	billboard.Size = UDim2.fromOffset(200, 40)
-	billboard.StudsOffsetWorldSpace = Vector3.new(0, 5, 0)
-	billboard.AlwaysOnTop = true
-	billboard.Parent = body
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.Text = "STICKY-FINGERS STAN"
-	label.TextColor3 = Color3.fromRGB(255, 60, 60)
-	label.TextSize = 16
-	label.Font = Enum.Font.GothamBold
-	label.Parent = billboard
+	local hat = Instance.new("Part")
+	hat.Name = "Hat"
+	hat.Size = Vector3.new(4, 0.6, 4)
+	hat.Color = Color3.fromRGB(255, 215, 0)
+	hat.Anchored = true
+	hat.CanCollide = false
+	hat.Position = Vector3.new(0, 4.2, 0)
+	hat.Parent = model
+	local humanoid = Instance.new("Humanoid")
+	humanoid.WalkSpeed = 7
+	humanoid.Parent = model
+	local label = Instance.new("BillboardGui")
+	label.Name = "ThiefLabel"
+	label.Size = UDim2.new(0, 220, 0, 30)
+	label.StudsOffset = Vector3.new(0, 5.5, 0)
+	label.AlwaysOnTop = true
+	label.Parent = model
+	local text = Instance.new("TextLabel")
+	text.Size = UDim2.new(1, 0, 1, 0)
+	text.BackgroundTransparency = 1
+	text.Font = Enum.Font.GothamBold
+	text.TextSize = 18
+	text.Text = "SI CILOK NAKAL!"
+	text.TextColor3 = Color3.fromRGB(255, 90, 90)
+	text.TextStrokeTransparency = 0.4
+	text.Parent = label
 	return model
 end
 
--- Build the wave: a huge wall of noodle-yellow water.
-local function buildWave(): Model
-	local model = Instance.new("Model")
-	model.Name = "NoodleTsunami"
-	local wall = Instance.new("Part")
-	wall.Name = "Wave"
-	wall.Size = Vector3.new(8, 40, 130)
-	wall.Color = Color3.fromRGB(250, 210, 90)
-	wall.Material = Enum.Material.Water
-	wall.Anchored = true
-	wall.CanCollide = false
-	wall.Transparency = 0.25
-	wall.Parent = model
-	model.PrimaryPart = wall
-	-- Noodle strands on the crest.
-	for i = -3, 3 do
+-- One thief visit: pick a random unlocked base with brainrots, walk
+-- there, channel, steal the richest one, and waddle back out.
+local function thiefVisit()
+	local players = game:GetService("Players"):GetPlayers()
+	local candidates = {}
+	for _, player in ipairs(players) do
+		local state = context.States[player]
+		if state and #state.Brainrots > 0 and not GameState.IsLocked(state, os.time()) then
+			table.insert(candidates, player)
+		end
+	end
+	if #candidates == 0 then
+		return
+	end
+	local victim = candidates[math.random(1, #candidates)]
+	local victimState = context.States[victim]
+	local thief = buildThief()
+	thief:PivotTo(CFrame.new(-100, 3, 40))
+	thief.Parent = workspace
+	context.Remotes.ToastAll:FireAllClients("Si Cilok Nakal is sneaking toward " .. victim.Name .. "'s base! Touch him to shoo him!")
+	context.Remotes.ThiefComing:FireAllClients(victim.Name)
+
+	local plotCenter = RumbleConfig.Plots[victimState.PlotIndex].Center
+	local shooed = false
+	local touched = thief.PrimaryPart.Touched:Connect(function(hit)
+		local hitter = game:GetService("Players"):GetPlayerFromCharacter(hit.Parent)
+		if hitter then
+			shooed = true
+		end
+	end)
+
+	-- Walk to the base, one step at a time, checking for a shoo.
+	local target = Vector3.new(plotCenter.X, 3, plotCenter.Z + 12)
+	local steps = 0
+	while steps < 400 and not shooed do
+		steps = steps + 1
+		local pivot = thief:GetPivot().Position
+		local delta = target - pivot
+		delta = Vector3.new(delta.X, 0, delta.Z)
+		if delta.Magnitude < 2 then
+			break
+		end
+		local step = delta.Unit * math.min(7 * 0.1, delta.Magnitude)
+		thief:PivotTo(CFrame.new(pivot + step))
+		task.wait(0.1)
+	end
+	touched:Disconnect()
+	if shooed then
+		context.Remotes.ToastAll:FireAllClients("Someone shooed Si Cilok Nakal away!")
+		thief:Destroy()
+		return
+	end
+	if GameState.IsLocked(victimState, os.time()) then
+		context.Remotes.ToastAll:FireAllClients("Si Cilok Nakal found the base locked and left!")
+		thief:Destroy()
+		return
+	end
+	-- The channel: 7 seconds, interrupted if anyone touches him now.
+	local channelDone = false
+	local channelTouch = thief.PrimaryPart.Touched:Connect(function(hit)
+		local hitter = game:GetService("Players"):GetPlayerFromCharacter(hit.Parent)
+		if hitter then
+			shooed = true
+		end
+	end)
+	local waited = 0
+	while waited < RumbleConfig.ThiefChannel and not shooed do
+		task.wait(0.25)
+		waited = waited + 0.25
+	end
+	channelTouch:Disconnect()
+	channelDone = not shooed
+	if not channelDone then
+		context.Remotes.ToastAll:FireAllClients("Someone shooed Si Cilok Nakal mid-steal!")
+		thief:Destroy()
+		return
+	end
+	local richest = GameState.RichestBrainrot(victimState)
+	if richest then
+		GameState.RemoveBrainrot(victimState, richest.Slot)
+		context.Conveyor.ClearPen(victimState, richest.Slot)
+		local def = BrainrotCatalog.Get(richest.DefId)
+		local name = def and def.Name or "a brainrot"
+		context.Remotes.ToastAll:FireAllClients("Si Cilok Nakal stole " .. name .. " from " .. victim.Name .. "!")
+	end
+	thief:Destroy()
+end
+
+-- The tsunami: warn, then sweep a noodle wall down the belt.
+local function tsunami()
+	context.Remotes.TsunamiWarning:FireAllClients(RumbleConfig.TsunamiWarning)
+	task.wait(RumbleConfig.TsunamiWarning)
+	local wave = Instance.new("Part")
+	wave.Name = "TsunamiWall"
+	wave.Size = Vector3.new(8, 22, 150)
+	wave.Color = Color3.fromRGB(250, 210, 90)
+	wave.Material = Enum.Material.SmoothPlastic
+	wave.Transparency = 0.2
+	wave.Anchored = true
+	wave.CanCollide = false
+	wave.Position = Vector3.new(-70, 11, 0)
+	wave.Parent = workspace
+	for _, n in ipairs({ -60, -40, -20, 0, 20, 40, 60 }) do
 		local noodle = Instance.new("Part")
-		noodle.Name = "Noodle"
+		noodle.Name = "NoodleChunk"
 		noodle.Size = Vector3.new(2, 3, 6)
 		noodle.Color = Color3.fromRGB(240, 190, 60)
 		noodle.Anchored = true
 		noodle.CanCollide = false
-		noodle.Position = Vector3.new(0, 21, i * 18)
-		noodle.Parent = model
+		noodle.Position = Vector3.new(-70, 23, n)
+		noodle.Parent = wave
 	end
-	return model
+	context.Remotes.TsunamiHit:FireAllClients()
+	-- Sweep east, washing the belt clean and shoving players.
+	local x = -70
+	while x < 70 do
+		x = x + 2
+		wave.Position = Vector3.new(x, 11, 0)
+		for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			if root and math.abs(root.Position.X - x) < 6 then
+				root.AssemblyLinearVelocity = Vector3.new(RumbleConfig.TsunamiShove, 14, 0)
+			end
+		end
+		task.wait(0.05)
+	end
+	wave:Destroy()
+	context.Conveyor.WashBelt()
+	context.Remotes.ToastAll:FireAllClients("The tsunami swept the belt clean!")
 end
 
--- Start the service. deps: { States, Plots, Remotes, Workspace, Conveyor }.
-function ThreatService.start(deps)
-	local states = deps.States
-	local plots = deps.Plots
-	local remotes = deps.Remotes
-	local workspace = deps.Workspace
-	local Players = game:GetService("Players")
-
-	local thiefFolder = Instance.new("Folder")
-	thiefFolder.Name = "Thieves"
-	thiefFolder.Parent = workspace
-
-	-- Stan's visit: pick a random player with an unlocked base that
-	-- actually holds a brainrot, walk Stan to it, and steal unless a
-	-- player touches him first (touching = tagged = shooed away).
-	local function thiefVisit()
-		local candidates = {}
-		for player, state in pairs(states) do
-			if #state.Owned > 0 and not GameState.isLocked(state) and plots[player] then
-				table.insert(candidates, player)
-			end
-		end
-		if #candidates == 0 then
-			return
-		end
-		local victim = candidates[math.random(1, #candidates)]
-		local state = states[victim]
-		local plotCenter = plots[victim]
-		local stan = buildThief()
-		stan:PivotTo(CFrame.new(Vector3.new(-70, 3.5, 0)))
-		stan.Parent = thiefFolder
-		remotes.ThiefAlert:FireAllClients(victim.Name .. " is being robbed by Sticky-Fingers Stan!")
-
-		local shooed = false
-		-- Any player who touches Stan shoos him off.
-		local touch = stan.Body.Touched:Connect(function(hit: BasePart)
-			local character = hit:FindFirstAncestorOfClass("Model")
-			local player = character and Players:GetPlayerFromCharacter(character)
-			if player then
-				shooed = true
-			end
-		end)
-
-		-- Walk Stan to the victim's base, one stud at a time.
-		local target = plotCenter + Vector3.new(0, 2.5, 8)
-		local pos = stan.PrimaryPart.Position
-		while (Vector3.new(target.X, pos.Y, target.Z) - pos).Magnitude > 2 and not shooed do
-			local dir = (target - pos)
-			dir = Vector3.new(dir.X, 0, dir.Z).Unit
-			pos += dir * 6 * 0.1
-			stan:PivotTo(CFrame.new(Vector3.new(pos.X, 3.5, pos.Z)))
-			task.wait(0.1)
-		end
-
-		if not shooed then
-			-- Stan channels the steal for 6 seconds; a touch breaks it.
-			local stealUntil = os.clock() + Config.ThiefStealTime
-			while os.clock() < stealUntil and not shooed do
-				task.wait(0.2)
-			end
-			if not shooed and #state.Owned > 0 then
-				-- He grabs the richest brainrot on the base.
-				local richest = state.Owned[1]
-				for _, owned in ipairs(state.Owned) do
-					if owned.DefId > richest.DefId then
-						richest = owned
-					end
+-- The meteor shower: flaming noodles rain down and leave cash pickups.
+local function meteorShower()
+	context.Remotes.ToastAll:FireAllClients("Meteor noodles incoming! Grab the glowing pickups!")
+	for _ = 1, RumbleConfig.MeteorCount do
+		local x = math.random(-80, 80)
+		local z = math.random(-50, 50)
+		local meteor = Instance.new("Part")
+		meteor.Name = "MeteorNoodle"
+		meteor.Size = Vector3.new(2, 2, 4)
+		meteor.Color = Color3.fromRGB(255, 120, 40)
+		meteor.Material = Enum.Material.Neon
+		meteor.Anchored = true
+		meteor.CanCollide = false
+		meteor.Position = Vector3.new(x, 60, z)
+		meteor.Parent = workspace
+		task.spawn(function()
+			local y = 60
+			while y > 2 do
+				y = y - 3
+				if meteor.Parent then
+					meteor.Position = Vector3.new(x, y, z)
 				end
-				GameState.removeFromSlot(state, richest.Slot)
-				deps.Conveyor.removeOwnedModel(plotCenter, richest.Slot)
-				remotes.ThiefAlert:FireAllClients("Stan stole a brainrot from " .. victim.Name .. "'s base!")
-				remotes.Popup:FireClient(victim, "Stan stole one of your brainrots! Lock your base!")
+				task.wait(0.05)
 			end
-		else
-			remotes.ThiefAlert:FireAllClients("Someone shooed Sticky-Fingers Stan away!")
-		end
-		touch:Disconnect()
-		stan:Destroy()
-	end
-
-	-- The wave: warn, then sweep the conveyor and knock players back.
-	local function waveEvent()
-		remotes.WaveWarning:FireAllClients(Config.WaveWarning)
-		task.wait(Config.WaveWarning)
-
-		local wave = buildWave()
-		wave:PivotTo(CFrame.new(Vector3.new(-70, 20, 0)))
-		wave.Parent = workspace
-		-- Sweep east across the island.
-		for x = -70, 90, 4 do
-			wave:PivotTo(CFrame.new(Vector3.new(x, 20, 0)))
-			task.wait(0.05)
-		end
-		-- Wash the belt clean and knock every player backwards.
-		deps.Conveyor.clearBelt()
-		for _, player in ipairs(Players:GetPlayers()) do
-			local character = player.Character
-			local root = character and character:FindFirstChild("HumanoidRootPart")
-			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-			if root and humanoid then
-				humanoid:ChangeState(Enum.HumanoidStateType.Physics)
-				root.AssemblyLinearVelocity = Vector3.new(40, 25, 0)
-				task.delay(0.6, function()
-					if humanoid.Parent then
-						humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+			if not meteor.Parent then
+				return
+			end
+			meteor.Color = Color3.fromRGB(255, 215, 0)
+			meteor.Size = Vector3.new(3, 1, 3)
+			meteor.Position = Vector3.new(x, 1.5, z)
+			local cashValue = RumbleConfig.MeteorCash
+			local touchConn
+			touchConn = meteor.Touched:Connect(function(hit)
+				local player = game:GetService("Players"):GetPlayerFromCharacter(hit.Parent)
+				if not player then
+					return
+				end
+				local state = context.States[player]
+				if not state then
+					return
+				end
+				GameState.AddCash(state, cashValue)
+				context.Remotes.Toast:FireClient(player, "Meteor noodle! +" .. MoneyFormat.Cash(cashValue))
+				touchConn:Disconnect()
+				meteor:Destroy()
+			end)
+			task.delay(20, function()
+				if meteor.Parent then
+					if touchConn then
+						touchConn:Disconnect()
 					end
-				end)
-			end
-		end
-		remotes.WaveHit:FireAllClients()
-		task.wait(1)
-		wave:Destroy()
+					meteor:Destroy()
+				end
+			end)
+		end)
+		task.wait(0.7)
 	end
+end
 
-	-- The two threat loops, forever.
+function ThreatService.Start(ctx)
+	context = ctx
 	task.spawn(function()
 		while true do
-			task.wait(Config.ThiefInterval)
+			task.wait(RumbleConfig.ThiefEvery)
 			thiefVisit()
 		end
 	end)
 	task.spawn(function()
 		while true do
-			task.wait(Config.WaveInterval)
-			waveEvent()
+			task.wait(RumbleConfig.TsunamiEvery)
+			tsunami()
 		end
 	end)
-
-	return ThreatService
+	task.spawn(function()
+		while true do
+			task.wait(RumbleConfig.MeteorEvery)
+			meteorShower()
+		end
+	end)
 end
 
 return ThreatService
