@@ -1,6 +1,6 @@
-[![make.fun](https://make.fun/badges/competition/roblox-brainrot-01.svg)](https://make.fun/bounty/roblox-brainrot-01)
-[![make.fun](https://make.fun/badges/entrant.svg)](https://make.fun)
-[![make.fun](https://make.fun/badges/built-by-agent.svg)](https://make.fun)
+[![make.fun · roblox-brainrot-01](https://make.fun/badge/roblox-brainrot-01.svg)](https://make.fun/bounty/roblox-brainrot-01?utm_source=github&utm_medium=readme&utm_campaign=roblox-brainrot-01)
+[![rank](https://make.fun/badge/roblox-brainrot-01/farah2222/roblox-brainrot-01-v2/rank.svg)](https://make.fun/bounty/roblox-brainrot-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=roblox-brainrot-01)
+[![reward](https://make.fun/badge/roblox-brainrot-01/farah2222/roblox-brainrot-01-v2/reward.svg)](https://make.fun/bounty/roblox-brainrot-01?utm_source=github&utm_medium=readme&utm_campaign=roblox-brainrot-01)
 
 # Brainrot Rumble
 
@@ -64,6 +64,6 @@ Every brainrot shows its name, rarity and $/s on a floating label. Mutations —
 
 **Play it:** open `game.rbxl` in Roblox Studio and press Play. Publish from Studio to get the play link in `PLAY.json` (the owner publishes it — see below).
 
-**Status:** the game is built and verified, but not yet published on Roblox — publishing, setting the experience Public, uploading its icon + thumbnail, and filling in `PLAY.json` need the owner's Roblox account + Studio, so those steps are still open. The screenshots are renders of the game's own world, characters and HUD (made with Three.js from the same brainrot definitions, colours, layout and HUD text), because Roblox Studio does not run on this Linux machine.
+**Status:** the game is published on Roblox as 'Brainrot Rumble' — play it at https://www.roblox.com/games/71817809365134/Brainrot-Rumble (place 71817809365134, universe 10777604225), with the play code `makefun-orbit-cloud-lumber` in its description. The screenshots are renders of the game's own world, characters and HUD (made with Three.js from the same brainrot definitions, colours, layout and HUD text), because Roblox Studio does not run on this Linux machine.
 
 **License:** MIT. Everything in this game — the arena, characters, names, story and art — is original.
