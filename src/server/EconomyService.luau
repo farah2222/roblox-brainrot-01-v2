@@ -76,10 +76,20 @@ local function rebirth(player)
 	if not state then
 		return
 	end
-	local price = GameState.RebirthPrice(state)
-	if not GameState.HasCash(state, price) then
-		context.Remotes.Toast:FireClient(player, "Rebirth costs " .. MoneyFormat.Cash(price) .. "!")
+	local ready, _hint = GameState.CanRebirth(state)
+	if not ready then
+		if state.Rebirths >= RumbleConfig.RebirthMax then
+			context.Remotes.Toast:FireClient(player, "Rebirth MAXED — income is already x5!")
+		else
+			context.Remotes.Toast:FireClient(player, "Rebirth needs " .. MoneyFormat.Cash(RumbleConfig.RebirthMinLifetime) .. " lifetime earned, or all 10 missions done!")
+		end
 		return
+	end
+	-- A rebirth wipes the run, including whatever you are carrying: the
+	-- reset knocks it out of your hands first, so no brainrot survives
+	-- the wipe as a dangling carry.
+	if state.Carrying then
+		context.Conveyor.DropCarry(player, state)
 	end
 	GameState.ApplyRebirth(state)
 	context.Conveyor.ClearAllPens()
@@ -124,7 +134,11 @@ local function sellBrainrot(player, penPos)
 	if not def then
 		return
 	end
-	local price = math.floor(def.Cost * RumbleConfig.SellFraction * BrainrotCatalog.MutationMultiplier(owned.Mutation))
+	-- Selling pays 70% of what you paid for it — the mutation is an
+	-- income bonus, not a resale bonus. (Paying the mutation multiplier
+	-- here used to refund up to 8.4x the buy price: buy a Glitch brainrot
+	-- cheap, sell it for a fortune. That money printer is gone.)
+	local price = math.floor(def.Cost * RumbleConfig.SellFraction)
 	GameState.RemoveBrainrot(state, slot)
 	context.Conveyor.ClearPen(state, slot)
 	GameState.AddCash(state, price)

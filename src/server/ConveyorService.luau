@@ -237,13 +237,14 @@ function ConveyorService.PullNearest(position, range, target)
 end
 
 -- Place a bought brainrot on a player's pen, as a permanent model.
--- Returns the slot, or nil when the base is full.
-function ConveyorService.PlaceOnBase(defId, mutation, state, world)
+-- Returns the slot, or nil when the base is full. comboMult / comboUntil
+-- stamp a buy-streak bonus on it (see GameState.AddBrainrot).
+function ConveyorService.PlaceOnBase(defId, mutation, state, world, comboMult, comboUntil)
 	local def = BrainrotCatalog.Get(defId)
 	if not def then
 		return nil
 	end
-	local slot = GameState.AddBrainrot(state, defId, mutation)
+	local slot = GameState.AddBrainrot(state, defId, mutation, comboMult, comboUntil)
 	if not slot then
 		return nil
 	end
@@ -286,7 +287,10 @@ function ConveyorService.RefreshWalkSpeed(player, state)
 	humanoid.WalkSpeed = speed
 end
 
-function ConveyorService.StartCarry(player, defId, mutation, state, fromVictim)
+-- comboMult / comboUntil stamp a buy-streak bonus on the carried
+-- brainrot (it earns at that tier for a minute once it is penned).
+-- Stolen brainrots carry no combo: the thief did not earn the streak.
+function ConveyorService.StartCarry(player, defId, mutation, state, fromVictim, comboMult, comboUntil)
 	if state.Carrying then
 		return false
 	end
@@ -301,7 +305,7 @@ function ConveyorService.StartCarry(player, defId, mutation, state, fromVictim)
 	model:SetAttribute("CarriedBy", player.Name)
 	attachLabel(model, def, mutation, 0, false)
 	model.Parent = workspace
-	state.Carrying = { DefId = defId, Mutation = mutation, Model = model, FromVictim = fromVictim }
+	state.Carrying = { DefId = defId, Mutation = mutation, Model = model, FromVictim = fromVictim, ComboMult = comboMult or 1, ComboUntil = comboUntil or 0 }
 	ConveyorService.RefreshWalkSpeed(player, state)
 	return true
 end
@@ -401,15 +405,31 @@ local function buyBrainrot(player, uid)
 		return
 	end
 	state.MissionStats.Buys = state.MissionStats.Buys + 1
-	if not ConveyorService.StartCarry(player, entry.Def.Id, entry.Mutation, state, nil) then
+	-- The combo: buy again within the window and the streak climbs a
+	-- tier (x1 -> x5). The brainrot you just bought earns at that tier
+	-- for a minute once it is penned. The streak only advances on a
+	-- real purchase, so work it out here and commit it after the pickup.
+	local now = os.time()
+	local prevCombo = state.ComboCount
+	local comboTier = 1
+	if prevCombo > 0 and now <= state.ComboUntil then
+		comboTier = math.min(prevCombo + 1, RumbleConfig.ComboMax)
+	end
+	local comboUntil = now + RumbleConfig.ComboBonusDuration
+	if not ConveyorService.StartCarry(player, entry.Def.Id, entry.Mutation, state, nil, comboTier, comboUntil) then
 		GameState.AddCash(state, entry.Price)
 		context.Remotes.Toast:FireClient(player, "Could not pick up " .. entry.Def.Name .. "!")
 		return
 	end
+	state.ComboCount = comboTier
+	state.ComboUntil = now + RumbleConfig.ComboWindow
 	entry.Model:Destroy()
 	active[uid] = nil
 	context.Remotes.BrainrotBought:FireClient(player, entry.Def.Name, entry.Mutation, 0)
 	context.Remotes.Toast:FireClient(player, "Bought " .. entry.Def.Name .. " for " .. MoneyFormat.Cash(entry.Price) .. "! Carry it home to your base!")
+	if comboTier > prevCombo and comboTier >= 2 then
+		context.Remotes.Toast:FireClient(player, "COMBO x" .. comboTier .. "! This brainrot earns x" .. comboTier .. " for 60s — buy again within " .. RumbleConfig.ComboWindow .. "s to climb!")
+	end
 end
 
 function ConveyorService.Start(ctx)
@@ -451,11 +471,19 @@ function ConveyorService.Start(ctx)
 						if dx * dx + dz * dz < 14 * 14 and GameState.FreeSlot(playerState) then
 							local defId = carrying.DefId
 							local mutation = carrying.Mutation
+							local comboMult = carrying.ComboMult or 1
+							local comboUntil = carrying.ComboUntil or 0
 							carrying.Model:Destroy()
 							playerState.Carrying = nil
 							ConveyorService.RefreshWalkSpeed(player, playerState)
-							local slot = ConveyorService.PlaceOnBase(defId, mutation, playerState, context.World)
+							local slot = ConveyorService.PlaceOnBase(defId, mutation, playerState, context.World, comboMult, comboUntil)
 							if slot then
+								-- Delivering refreshes the combo window: the
+								-- carry itself does not eat the streak, only
+								-- the walk back to the belt does.
+								if playerState.ComboCount > 0 then
+									playerState.ComboUntil = os.time() + RumbleConfig.ComboWindow
+								end
 								local def = BrainrotCatalog.Get(defId)
 								local bonus = def and (RumbleConfig.DeliveryBonus[def.Rarity] or 0) or 0
 								local message = "Delivered " .. (def and def.Name or "a brainrot") .. " to your base!"

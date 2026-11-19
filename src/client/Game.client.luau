@@ -16,6 +16,7 @@ local TweenService = game:GetService("TweenService")
 local RumbleConfig = require(ReplicatedStorage.Shared.RumbleConfig)
 
 local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 local remotes = ReplicatedStorage:WaitForChild("RumbleRemotes")
 local camera = workspace.CurrentCamera
 
@@ -268,6 +269,28 @@ end)
 
 remotes.TsunamiHit.OnClientEvent:Connect(function()
 	shake(2.5, 1.2)
+end)
+
+-- The red flash for the 5-seconds-out warning: a full-screen red veil
+-- that flares once and fades, plus the same shake as the hit — the
+-- last warning before the wave, so you run home NOW.
+local flashGui = Instance.new("ScreenGui")
+flashGui.Name = "TsunamiFlash"
+flashGui.ResetOnSpawn = false
+flashGui.IgnoreGuiInset = true
+flashGui.Parent = playerGui
+local flashFrame = Instance.new("Frame")
+flashFrame.Name = "Flash"
+flashFrame.Size = UDim2.new(1, 0, 1, 0)
+flashFrame.BackgroundColor3 = Color3.fromRGB(255, 40, 40)
+flashFrame.BackgroundTransparency = 1
+flashFrame.BorderSizePixel = 0
+flashFrame.Parent = flashGui
+
+remotes.TsunamiImminent.OnClientEvent:Connect(function()
+	shake(2.5, 1.2)
+	flashFrame.BackgroundTransparency = 0.55
+	TweenService:Create(flashFrame, TweenInfo.new(1.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 }):Play()
 end)
 
 remotes.WeaponHit.OnClientEvent:Connect(function()

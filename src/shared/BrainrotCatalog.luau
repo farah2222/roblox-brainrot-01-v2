@@ -48,10 +48,10 @@ BrainrotCatalog.Characters = {
 		Body = { 255, 140, 30 }, Head = { 255, 170, 60 }, Accent = { 30, 30, 30 }, Shape = "box", Accessory = "none",
 		Blurb = "An orange cat. Angry. About everything. Especially Mondays.",
 		Quote = "Meow means no. In every language." },
-	{ Id = "bakso-beranak", Name = "Bakso Beranak", Rarity = "Common", Rate = 8, Cost = 240,
+	{ Id = "bakso-beranak", Name = "Bakso Beranak", Rarity = "Common", Rate = 8, Cost = 300,
 		Body = { 180, 120, 80 }, Head = { 210, 150, 100 }, Accent = { 120, 200, 90 }, Shape = "round", Accessory = "none",
 		Blurb = "A meatball that had a baby meatball. The baby charges rent.",
-		Quote = "I brought my baby to work. It charges rent." },
+		Quote = "I brought my baby to work. It charges rent." }, -- r8: was $240 — the clear best Common, every early player bought it first and ignored the rest of the tier; $300 keeps the tier a real choice
 	-- Rare: the street-food regulars.
 	{ Id = "indomie-goreng", Name = "Indomie Goreng Raksasa", Rarity = "Rare", Rate = 15, Cost = 600,
 		Body = { 240, 210, 130 }, Head = { 250, 230, 160 }, Accent = { 200, 40, 40 }, Shape = "wide", Accessory = "chefhat",
@@ -153,10 +153,10 @@ BrainrotCatalog.Characters = {
 		Body = { 140, 90, 50 }, Head = { 180, 120, 70 }, Accent = { 120, 200, 255 }, Shape = "tall", Accessory = "none",
 		Blurb = "A magic slit-drum that only sounds at midnight. When it sounds, everyone pays.",
 		Quote = "When I sound at midnight, everyone pays." },
-	{ Id = "gong-gede", Name = "Gong Gede Misterius", Rarity = "Secret", Rate = 8000, Cost = 700000,
+	{ Id = "gong-gede", Name = "Gong Gede Misterius", Rarity = "Secret", Rate = 9000, Cost = 600000,
 		Body = { 255, 215, 0 }, Head = { 255, 230, 90 }, Accent = { 200, 40, 40 }, Shape = "round", Accessory = "crown",
 		Blurb = "A mysterious giant gong. Strike it and the whole arena gets rich. Or scared.",
-		Quote = "Strike me and the arena gets rich. Or scared." },
+		Quote = "Strike me and the arena gets rich. Or scared." }, -- r8: was $700K / 8,000/s — the slowest payback in the game, stalling the climb right before Divine; $600K / 9,000/s keeps the top of the ladder moving
 	-- One more per tier, plus the seventh tier: Divine.
 	{ Id = "krupuk", Name = "Krupuk Pecah Berisik", Rarity = "Common", Rate = 4, Cost = 120,
 		Body = { 240, 200, 140 }, Head = { 250, 220, 170 }, Accent = { 255, 60, 60 }, Shape = "box", Accessory = "none",
@@ -179,10 +179,10 @@ BrainrotCatalog.Characters = {
 		Blurb = "A taichan satay phoenix, grilled without sauce, reborn in chili.",
 		Quote = "No peanut sauce. No mercy. Just fire." },
 	-- Divine: the five gods of the food court.
-	{ Id = "nasi-uduk", Name = "Dewa Nasi Uduk", Rarity = "Divine", Rate = 10000, Cost = 900000,
+	{ Id = "nasi-uduk", Name = "Dewa Nasi Uduk", Rarity = "Divine", Rate = 12000, Cost = 750000,
 		Body = { 240, 230, 200 }, Head = { 250, 240, 220 }, Accent = { 255, 215, 0 }, Shape = "tall", Accessory = "crown",
 		Blurb = "God of coconut rice. Every grain is a blessing.",
-		Quote = "I am the rice. The rice is me. Bow." },
+		Quote = "I am the rice. The rice is me. Bow." }, -- r8: was $900K / 10,000/s — the first Divine sat behind a wall most of a session could not reach; $750K / 12,000/s makes the endgame reachable in one good run without trivialising it
 	{ Id = "gudeg", Name = "Kaisar Gudeg Jogja", Rarity = "Divine", Rate = 12000, Cost = 1100000,
 		Body = { 120, 80, 50 }, Head = { 160, 110, 70 }, Accent = { 255, 215, 0 }, Shape = "wide", Accessory = "crown",
 		Blurb = "Emperor of Yogyakarta gudeg. Sweet, slow, unstoppable.",

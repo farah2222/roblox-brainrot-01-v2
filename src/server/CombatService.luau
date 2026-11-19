@@ -170,7 +170,11 @@ local function fireFreeze(player)
 		ice:Destroy()
 		if humanoid.Parent then
 			local victimState = context.States[rival]
-			if victimState then
+			if victimState and context.Conveyor and context.Conveyor.RefreshWalkSpeed then
+				-- RefreshWalkSpeed re-applies the carry slow, so a
+				-- frozen carrier does not thaw at full speed.
+				context.Conveyor.RefreshWalkSpeed(rival, victimState)
+			elseif victimState then
 				humanoid.WalkSpeed = GameState.WalkSpeed(victimState)
 			else
 				humanoid.WalkSpeed = 16
@@ -311,16 +315,26 @@ local function watchChannels()
 						context.Conveyor.ClearPen(victimState, channel.Slot)
 						-- The thief carries it home (and can be bonked on the way).
 						if context.Conveyor.IsCarrying(thiefState) or not GameState.FreeSlot(thiefState) then
-							GameState.AddBrainrot(victimState, stolen.DefId, stolen.Mutation)
-							context.Conveyor.PlaceOnBase(stolen.DefId, stolen.Mutation, victimState, context.World)
+							-- The brainrot stays put: pen it back on the
+							-- victim's base. (PlaceOnBase adds the state
+							-- entry itself — adding it here too used to
+							-- duplicate the brainrot, paying double income
+							-- for a model that did not exist.) Keep its
+							-- combo stamp, if it had one.
+							local slot = context.Conveyor.PlaceOnBase(stolen.DefId, stolen.Mutation, victimState, context.World, stolen.ComboMult, stolen.ComboUntil)
+							if not slot then
+								GameState.AddBrainrot(victimState, stolen.DefId, stolen.Mutation, stolen.ComboMult, stolen.ComboUntil)
+							end
 							context.Remotes.Toast:FireClient(thief, "Your hands are full — the brainrot stays put!")
 						elseif context.Conveyor.StartCarry(thief, stolen.DefId, stolen.Mutation, thiefState, channel.Victim) then
 							context.Remotes.StealDone:FireClient(thief, stolen.DefId)
 							context.Remotes.Toast:FireClient(thief, "You stole a brainrot! Carry it home — fast!")
 							context.Remotes.Toast:FireClient(channel.Victim, thief.Name .. " stole your brainrot!")
 						else
-							GameState.AddBrainrot(victimState, stolen.DefId, stolen.Mutation)
-							context.Conveyor.PlaceOnBase(stolen.DefId, stolen.Mutation, victimState, context.World)
+							local slot = context.Conveyor.PlaceOnBase(stolen.DefId, stolen.Mutation, victimState, context.World, stolen.ComboMult, stolen.ComboUntil)
+							if not slot then
+								GameState.AddBrainrot(victimState, stolen.DefId, stolen.Mutation, stolen.ComboMult, stolen.ComboUntil)
+							end
 						end
 					end
 				end

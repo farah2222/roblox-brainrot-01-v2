@@ -29,9 +29,10 @@ Every brainrot shows its name, rarity and $/s on a floating label, and each one 
 **The loop:**
 - Brainrots spawn at the west gate and march east; walk up and press **E** to buy one (costs cash) — then you **carry it in your hands** (you walk 20% slower while carrying) and run it to a free pen on your base. Delivering it pays a **delivery bonus** by tier (up to $5,000 for a Divine). Drop it, get bonked, or get hit by a weapon and you lose it.
 - A delivered brainrot earns its $/s, ticking every second — your HUD shows cash and $/s
-- Press **V** near one of your brainrots to **sell it** for 70% of its cost (times its mutation)
+- Press **V** near one of your brainrots to **sell it** for 70% of what you paid for it (the mutation is an income bonus, not a resale bonus — a Glitch brainrot does not sell for 12x)
+- **Combo streak:** buy brainrots in quick succession (within 12s) and the streak climbs — x1 → x2 → x3 → x4 → x5. The brainrot you just bought earns at that tier for 60s once it is penned. Delivering refreshes the window; stop buying and the streak resets, and the tsunami breaks it outright
 - Buy the next tier, then the next; shop upgrades, each with its own level shown in the shop: **Speed Boots** (+30% walk speed, LV 1–5), **Money Magnet** (+12% $/s, LV 1–5), **Golden Glove** (−20% weapon cooldowns, LV 1–5), **Base Expansion** (+1 pen per level, LV 1–2, up to 10 pens)
-- **Rebirth** (from $30K, cost x4 each time): reset cash and brainrots for a permanent +30% $/s each, with confetti
+- **Rebirth** (once you have earned $100,000 in your lifetime, or finished all 10 missions): reset cash, brainrots and mission progress for a permanent +50% $/s each, stacking to a x5 cap (8 rebirths). The mission chain restarts after each rebirth, so the chain bonus can be earned again; upgrades, the Index and lifetime earnings survive. With confetti
 
 **The fight — weapons and stealing:**
 - **Slap Glove [1]** — smack a rival flying backwards (3s cooldown)
@@ -43,7 +44,7 @@ Every brainrot shows its name, rarity and $/s on a floating label, and each one 
 
 **The threats:**
 - **Si Cilok Nakal**, the thief: every ~80 seconds he sneaks in from the edge, walks to a random unlocked base and needs 7 seconds to steal its richest brainrot — touch him to shoo him away, or **bonk him with a weapon** while he is carrying it and he drops it
-- **The Giant Noodle Tsunami**: every ~160 seconds a 15-second warning counts down, then a towering noodle wall with a foamy crest sweeps the belt (unbought brainrots wash away) and shoves every player backwards — dash home with your catch. Survive one and it counts toward the mission chain
+- **The Giant Noodle Tsunami**: every ~160 seconds a 15-second warning counts down, then a towering noodle wall with a foamy crest sweeps the belt (unbought brainrots wash away) and shoves every player backwards — dash home with your catch. Five seconds out the screen shakes and flashes red; when the wave hits it knocks any carried brainrot out of your hands and breaks your combo. Survive one and it counts toward the mission chain
 - **Meteor noodles**: every ~200 seconds flaming noodles rain down and leave glowing pickups worth cash where they land
 - **Golden Noodle Hour**: every 4 minutes the market turns gold for 60 seconds — **income x2** and every spawn rolls its mutation **4 times** and keeps the best. The first one starts 45 seconds after you join, so the gold rains early
 
@@ -51,7 +52,7 @@ Every brainrot shows its name, rarity and $/s on a floating label, and each one 
 
 **The world:** a procedurally built 3D night-market arena — central belt with rollers and neon rails, four fenced home plots with pen markers and lock gates, a spawn plaza, a shop kiosk, a giant noodle-bowl statue with chopsticks, sambal trees, drifting clouds and a spin-wheel platform with a golden wheel. A real 3D character spawns and walks it (`CharacterAutoLoads=true`).
 
-**The HUD:** cash and $/s top-centre (clear of Roblox's top-left menu buttons), rebirth count, base fill and multiplier, wave countdown, thief alerts, a weapon bar, and a shop panel (lock / rebirth / upgrades / spin). The **rarity ladder** (7 tiers + 5 mutations) is always on screen top-left with an INDEX button; the **current mission** and a **carrying banner** sit under the cash bar, and a gold banner announces Golden Noodle Hour. Effects: buy particles, floating cash popups, screen shake on the wave and on hits, confetti on rebirth, freeze ice blocks, steal progress bar.
+**The HUD:** cash and $/s top-centre (clear of Roblox's top-left menu buttons), rebirth count, base fill and multiplier, combo streak, wave countdown, thief alerts, a weapon bar, and a shop panel (lock / rebirth / upgrades / spin). The rebirth button shows when you qualify (or what is still missing). The **rarity ladder** (7 tiers + 5 mutations) is always on screen top-left with an INDEX button; the **current mission** and a **carrying banner** sit under the cash bar, and a gold banner announces Golden Noodle Hour. Effects: buy particles, floating cash popups, screen shake on the wave and on hits, confetti on rebirth, freeze ice blocks, steal progress bar.
 
 **Structure (one module per job, clean client-server split, state in one place):**
 - `src/shared/BrainrotCatalog.luau` — the cast, rarities, mutations, spawn rolls

@@ -29,7 +29,7 @@ local remoteNames = {
 	"StealStart", "SpinWheel", "SellBrainrot", "HudUpdate", "Toast", "ToastAll",
 	"BrainrotBought", "RebirthDone", "WeaponSwung", "WeaponHit",
 	"StealStarted", "StealStopped", "StealDone", "SpinResult",
-	"ThiefComing", "TsunamiWarning", "TsunamiHit", "GoldenHour", "MissionDone",
+	"ThiefComing", "TsunamiWarning", "TsunamiImminent", "TsunamiHit", "GoldenHour", "MissionDone",
 }
 local remotes = {}
 for _, name in ipairs(remoteNames) do

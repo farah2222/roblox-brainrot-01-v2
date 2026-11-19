@@ -4,6 +4,14 @@
 -- a giant noodle-bowl statue, sambal trees, drifting clouds and a spin
 -- wheel platform. Everything is Anchored Parts built from code, so the
 -- place file stays small and the world is exactly reproducible.
+--
+-- ARENA HEIGHT NOTE (r7 fix, 2026-11-19): the arena is built around y=0
+-- (ArenaFloor top y=0, belt/spawn pad just above it), so it sits exactly
+-- on the Baseplate TOP, which must be y=0. The live place Baseplate is
+-- 512x20x512, so it must sit at Position (0,-10,0) for its top to be y=0.
+-- If the Baseplate is at (0,0,0) instead, its top is y=10 and the whole
+-- arena is buried 10 studs underneath it — the player spawns on an empty
+-- studded floor and sees nothing.
 
 local RumbleConfig = require(game:GetService("ReplicatedStorage").Shared.RumbleConfig)
 

@@ -57,10 +57,15 @@ RumbleConfig.MeteorCash = 800 -- base cash per meteor noodle picked up
 RumbleConfig.BossChance = 0.05 -- of Secret spawns
 RumbleConfig.BossScale = 2
 
--- Rebirth: wipe cash and brainrots for a permanent income multiplier.
-RumbleConfig.RebirthBasePrice = 30000
-RumbleConfig.RebirthPriceGrowth = 4 -- price multiplies by this each rebirth
-RumbleConfig.RebirthBoost = 0.30 -- +30% $/s per rebirth
+-- Rebirth: wipe cash, brainrots and mission progress for a permanent
+-- income multiplier. It costs nothing in cash — the wipe IS the price —
+-- but it is gated: you must have earned $100,000 in your lifetime, or
+-- finished all 10 missions. Each rebirth adds +50% $/s, stacking up to
+-- a x5 multiplier (8 rebirths); the mission chain restarts after each
+-- rebirth, so the chain bonus can be earned again.
+RumbleConfig.RebirthBoost = 0.50 -- +50% $/s per rebirth
+RumbleConfig.RebirthMax = 8 -- rebirths; 1 + 8 x 0.50 = x5 multiplier cap
+RumbleConfig.RebirthMinLifetime = 100000 -- lifetime $ earned to qualify
 
 -- Shop upgrades. Each has a price, a cap, and what one level does.
 -- Four levelled tracks: every level costs Price * (level + 1).
@@ -92,6 +97,16 @@ RumbleConfig.DeliveryBonus = {
 	Secret = 2500,
 	Divine = 5000,
 }
+
+-- The combo: buy brainrots in quick succession and the streak builds.
+-- Each buy within the window raises the combo a tier (x1 -> x5); the
+-- brainrot you just bought earns at that tier for a minute once it is
+-- penned. Delivering refreshes the window (the carry itself does not
+-- eat the streak); stop buying for a whole window and it resets, and
+-- the tsunami breaks it outright.
+RumbleConfig.ComboWindow = 12 -- seconds between buys to keep the streak
+RumbleConfig.ComboMax = 5 -- combo tiers: x1, x2, x3, x4, x5
+RumbleConfig.ComboBonusDuration = 60 -- seconds a bought brainrot keeps its combo rate
 
 -- The mission chain: finish all 10 missions for the chain bonus.
 RumbleConfig.ChainBonusCash = 25000

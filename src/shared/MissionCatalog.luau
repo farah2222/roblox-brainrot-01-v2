@@ -75,8 +75,10 @@ MissionCatalog.Missions = {
 		Desc = "Rebirth once",
 		Goal = 1,
 		Reward = 2000,
+		-- Counts rebirths since the mission chain last restarted, so a
+		-- rebirth re-arms this mission instead of completing it for free.
 		Check = function(state)
-			return state.Rebirths
+			return state.Rebirths - (state.RebirthMissionBase or 0)
 		end,
 	},
 	{

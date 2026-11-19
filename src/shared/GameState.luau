@@ -6,6 +6,7 @@
 local RumbleConfig = require(script.Parent.RumbleConfig)
 local BrainrotCatalog = require(script.Parent.BrainrotCatalog)
 local MissionCatalog = require(script.Parent.MissionCatalog)
+local MoneyFormat = require(script.Parent.MoneyFormat)
 
 local GameState = {}
 
@@ -29,7 +30,10 @@ function GameState.NewPlayer()
 		ChainBonus = false, -- true once all 10 missions are done (+25% $/s forever)
 		CollectionRewards = {}, -- rarity tier -> true (tier collection paid)
 		AllCollected = false, -- true once all 40 brainrots are discovered
-		Carrying = nil, -- { DefId, Mutation } while a bought brainrot is carried home
+		Carrying = nil, -- { DefId, Mutation, ComboMult, ComboUntil } while a bought brainrot is carried home
+		ComboCount = 0, -- current buy streak tier (0 = no streak)
+		ComboUntil = 0, -- os.time() the streak window ends
+		RebirthMissionBase = 0, -- Rebirths when the mission chain last restarted (the rebirth mission needs one more)
 	}
 end
 
@@ -44,12 +48,19 @@ function GameState.MarkDiscovered(state, defId)
 end
 
 -- The $/s of everything a player owns, before their personal multiplier.
-function GameState.BaseIncome(state)
+-- A brainrot bought on a combo streak earns at its stamped combo tier
+-- (x1..x5) while the stamp lasts (60s from the buy); after that it
+-- earns its normal rate. Owned entries without a stamp just earn normal.
+function GameState.BaseIncome(state, now)
 	local total = 0
 	for _, owned in ipairs(state.Brainrots) do
 		local def = BrainrotCatalog.Get(owned.DefId)
 		if def then
-			total = total + BrainrotCatalog.EffectiveRate(def, owned.Mutation)
+			local rate = BrainrotCatalog.EffectiveRate(def, owned.Mutation)
+			if owned.ComboMult and owned.ComboMult > 1 and owned.ComboUntil and now and now < owned.ComboUntil then
+				rate = rate * owned.ComboMult
+			end
+			total = total + rate
 		end
 	end
 	return total
@@ -59,7 +70,7 @@ end
 -- a spin boost while it lasts, Golden Hour (income x2) while it lasts,
 -- and the mission-chain bonus (+25%) once the whole chain is done.
 function GameState.IncomePerSecond(state, now)
-	local income = GameState.BaseIncome(state)
+	local income = GameState.BaseIncome(state, now)
 	income = income * state.Multiplier
 	income = income * (1 + state.Upgrades.Magnet * RumbleConfig.Upgrades.Magnet.IncomeBonus)
 	if now < state.BoostUntil then
@@ -129,12 +140,14 @@ function GameState.FreeSlot(state)
 end
 
 -- Add a brainrot to a free pen. Returns the slot, or nil when full.
-function GameState.AddBrainrot(state, defId, mutation)
+-- comboMult / comboUntil stamp a buy-streak bonus on the brainrot (its
+-- income is multiplied while the stamp lasts); plain adds pass none.
+function GameState.AddBrainrot(state, defId, mutation, comboMult, comboUntil)
 	local slot = GameState.FreeSlot(state)
 	if not slot then
 		return nil
 	end
-	table.insert(state.Brainrots, { DefId = defId, Mutation = mutation, Slot = slot })
+	table.insert(state.Brainrots, { DefId = defId, Mutation = mutation, Slot = slot, ComboMult = comboMult or 1, ComboUntil = comboUntil or 0 })
 	return slot
 end
 
@@ -166,17 +179,48 @@ function GameState.RichestBrainrot(state)
 	return best
 end
 
--- Rebirth price for the NEXT rebirth.
-function GameState.RebirthPrice(state)
-	return RumbleConfig.RebirthBasePrice * (RumbleConfig.RebirthPriceGrowth ^ state.Rebirths)
+-- Can this player rebirth right now? Returns true, or false + the
+-- short reason the HUD shows. Rebirth is gated, not priced: you need
+-- $100,000 earned in your lifetime, or all 10 missions done — and you
+-- cannot rebirth past the x5 multiplier cap (8 rebirths).
+function GameState.CanRebirth(state)
+	if state.Rebirths >= RumbleConfig.RebirthMax then
+		return false, "MAXED x5"
+	end
+	if state.TotalEarned >= RumbleConfig.RebirthMinLifetime then
+		return true, ""
+	end
+	if GameState.MissionsDoneCount(state) >= #MissionCatalog.Missions then
+		return true, ""
+	end
+	return false, "need " .. MoneyFormat.Cash(RumbleConfig.RebirthMinLifetime)
 end
 
--- Apply a rebirth: cash and brainrots reset, multiplier grows.
+-- Apply a rebirth: cash, brainrots and mission progress reset (the
+-- mission chain restarts, so the chain bonus can be earned again), and
+-- the permanent income multiplier grows +50% a rebirth, capped at x5.
+-- Upgrades, the Index and lifetime earnings survive — they are the
+-- progress that makes the next run faster. The rebirth mission is
+-- re-armed: it needs one more rebirth after this one.
 function GameState.ApplyRebirth(state)
 	state.Cash = RumbleConfig.StartCash
 	state.Brainrots = {}
+	state.Carrying = nil
+	state.MissionsDone = {}
+	state.MissionStats = { Buys = 0, Locks = 0, Spins = 0, Bonks = 0, TsunamisSurvived = 0 }
+	state.ChainBonus = false
+	state.LockUntil = 0
+	state.ComboCount = 0
+	state.ComboUntil = 0
 	state.Rebirths = state.Rebirths + 1
-	state.Multiplier = 1 + state.Rebirths * RumbleConfig.RebirthBoost
+	state.RebirthMissionBase = state.Rebirths
+	state.Multiplier = math.min(1 + state.Rebirths * RumbleConfig.RebirthBoost, 1 + RumbleConfig.RebirthMax * RumbleConfig.RebirthBoost)
+end
+
+-- Drop the buy streak (the tsunami breaks it, and so does rebirth).
+function GameState.ResetCombo(state)
+	state.ComboCount = 0
+	state.ComboUntil = 0
 end
 
 -- Check every mission against this player's state. Newly completed ones
@@ -305,11 +349,14 @@ function GameState.Snapshot(state, now)
 	if state.Carrying then
 		carrying = { DefId = state.Carrying.DefId, Mutation = state.Carrying.Mutation }
 	end
+	local rebirthReady, rebirthHint = GameState.CanRebirth(state)
 	return {
 		Cash = state.Cash,
 		Income = GameState.IncomePerSecond(state, now),
 		Rebirths = state.Rebirths,
 		Multiplier = state.Multiplier,
+		RebirthReady = rebirthReady,
+		RebirthHint = rebirthHint,
 		LockLeft = GameState.LockLeft(state, now),
 		Upgrades = { Boots = state.Upgrades.Boots, Magnet = state.Upgrades.Magnet, Glove = state.Upgrades.Glove, Expansion = state.Upgrades.Expansion or 0 },
 		Brainrots = owned,
@@ -327,6 +374,8 @@ function GameState.Snapshot(state, now)
 		CollectionTotal = #BrainrotCatalog.Rarities,
 		AllCollected = state.AllCollected,
 		Carrying = carrying,
+		ComboCount = state.ComboCount,
+		ComboLeft = math.max(0, state.ComboUntil - now),
 	}
 end
 

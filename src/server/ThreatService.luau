@@ -208,7 +208,13 @@ end
 -- it — and a clear RUN HOME banner on every screen.
 local function tsunami()
 	context.Remotes.TsunamiWarning:FireAllClients(RumbleConfig.TsunamiWarning)
-	task.wait(RumbleConfig.TsunamiWarning)
+	-- Five seconds out, warn the clients to shake and flash: the wave
+	-- is about to hit. (The warning is 15s; if it were ever shortened,
+	-- the imminent signal fires at once instead of going negative.)
+	local imminentIn = math.max(0, RumbleConfig.TsunamiWarning - 5)
+	task.wait(imminentIn)
+	context.Remotes.TsunamiImminent:FireAllClients()
+	task.wait(RumbleConfig.TsunamiWarning - imminentIn)
 	-- Everyone in the arena when the wave comes survives it (mission).
 	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
 		local state = context.States[player]
@@ -267,6 +273,18 @@ local function tsunami()
 	end
 	waveModel.Parent = workspace
 	context.Remotes.TsunamiHit:FireAllClients()
+	-- The wave knocks carried brainrots out of everyone's hands and
+	-- breaks every buy streak: run home BEFORE the wave, or lose the
+	-- catch and the combo with it.
+	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+		local state = context.States[player]
+		if state then
+			if state.Carrying then
+				context.Conveyor.DropCarry(player, state)
+			end
+			GameState.ResetCombo(state)
+		end
+	end
 	-- Sweep east, washing the belt clean and shoving players.
 	local x = -70
 	while x < 70 do

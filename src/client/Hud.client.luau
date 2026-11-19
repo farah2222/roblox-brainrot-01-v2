@@ -170,7 +170,7 @@ local shopTitle = text(shop, "Title", UDim2.new(1, 0, 0, 26), UDim2.new(0, 0, 0,
 shopTitle.TextXAlignment = Enum.TextXAlignment.Center
 shopTitle.Text = "SHOP"
 local lockBtn = button(shop, "Lock", UDim2.new(1, -20, 0, 40), UDim2.new(0, 10, 0, 38), Color3.fromRGB(200, 60, 60), "Lock Base (" .. MoneyFormat.Cash(RumbleConfig.LockPrice) .. ") [L]", 16)
-local rebirthBtn = button(shop, "Rebirth", UDim2.new(1, -20, 0, 40), UDim2.new(0, 10, 0, 86), Color3.fromRGB(150, 90, 255), "Rebirth (" .. MoneyFormat.Short(RumbleConfig.RebirthBasePrice) .. ") [R]", 16)
+local rebirthBtn = button(shop, "Rebirth", UDim2.new(1, -20, 0, 40), UDim2.new(0, 10, 0, 86), Color3.fromRGB(150, 90, 255), "Rebirth [R]", 16)
 local bootsBtn = button(shop, "Boots", UDim2.new(1, -20, 0, 40), UDim2.new(0, 10, 0, 134), Color3.fromRGB(90, 140, 255), "Speed Boots LV 0/5", 16)
 local magnetBtn = button(shop, "Magnet", UDim2.new(1, -20, 0, 40), UDim2.new(0, 10, 0, 182), Color3.fromRGB(90, 200, 120), "Money Magnet LV 0/5", 16)
 local gloveBtn = button(shop, "Glove", UDim2.new(1, -20, 0, 40), UDim2.new(0, 10, 0, 230), Color3.fromRGB(255, 180, 40), "Golden Glove LV 0/5", 16)
@@ -368,8 +368,12 @@ remotes.HudUpdate.OnClientEvent:Connect(function(snapshot)
 	if snapshot.ChainBonus then
 		chain = "  |  CHAIN +25%"
 	end
+	local comboText = ""
+	if snapshot.ComboCount and snapshot.ComboCount >= 2 then
+		comboText = "  |  COMBO x" .. snapshot.ComboCount .. " (" .. (snapshot.ComboLeft or 0) .. "s)"
+	end
 	local penCap = snapshot.PenCap or 8
-	subLabel.Text = "Rebirths: " .. snapshot.Rebirths .. "  |  Base: " .. #snapshot.Brainrots .. "/" .. penCap .. "  |  x" .. string.format("%.2f", snapshot.Multiplier) .. boost .. chain
+	subLabel.Text = "Rebirths: " .. snapshot.Rebirths .. "  |  Base: " .. #snapshot.Brainrots .. "/" .. penCap .. "  |  x" .. string.format("%.2f", snapshot.Multiplier) .. boost .. chain .. comboText
 	if snapshot.LockLeft and snapshot.LockLeft > 0 then
 		lockStatus.Text = "Base: LOCKED (" .. snapshot.LockLeft .. "s)"
 		lockStatus.TextColor3 = Color3.fromRGB(140, 255, 140)
@@ -383,6 +387,14 @@ remotes.HudUpdate.OnClientEvent:Connect(function(snapshot)
 		spinBtn.Text = "SPIN IN " .. snapshot.SpinReadyIn .. "s"
 	else
 		spinBtn.Text = "SPIN THE WHEEL [Q]"
+	end
+	-- Rebirth button: ready state, or what is still missing.
+	if snapshot.RebirthReady then
+		rebirthBtn.Text = "REBIRTH READY! [R]"
+		rebirthBtn.BackgroundColor3 = Color3.fromRGB(190, 110, 255)
+	else
+		rebirthBtn.Text = "Rebirth: " .. (snapshot.RebirthHint or "") .. " [R]"
+		rebirthBtn.BackgroundColor3 = Color3.fromRGB(120, 70, 200)
 	end
 	upgradeButtonText(bootsBtn, "Boots")
 	upgradeButtonText(magnetBtn, "Magnet")
